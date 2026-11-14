@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from app.core.applog import event as log_event, register_secret
 from app.core.config import Settings
 from app.schemas.chat import ChatMessage, ChatResponse, TokenUsage
 
@@ -63,30 +64,44 @@ class TextDelta:
 
 async def stream_model(settings: Settings, messages: list[ChatMessage], instructions: str) -> AsyncIterator[TextDelta | ChatResponse]:
     """边收边产出增量文字，最后产出完整 ChatResponse；失败抛 ModelError，已产出的文字不算交付。"""
+    started = monotonic()
+    log_event(logger, "llm.start", f"请求模型 {settings.model_name or '（未配置）'}，思考强度 {settings.model_reasoning_effort}",
+          model=settings.model_name, effort=settings.model_reasoning_effort, messages=len(messages), instructions_chars=len(instructions))
+    try:
+        async for item in _stream_model(settings, messages, instructions, started):
+            yield item
+    except ModelError as error:
+        log_event(logger, "llm.error", f"模型出错：{error}", level=logging.ERROR, error=error,
+              status=error.status_code, ms=round((monotonic() - started) * 1000))
+        raise
+
+
+async def _stream_model(settings: Settings, messages: list[ChatMessage], instructions: str, started: float) -> AsyncIterator[TextDelta | ChatResponse]:
     if not settings.model_configured:
         raise ModelError("尚未配置模型，请在后端 .env 中填写中转地址、API Key 和模型名。", 503)
     base = settings.model_base_url.strip().rstrip("/")
     parsed = urlsplit(base)
     if parsed.scheme not in {"https", "http"} or not parsed.netloc or parsed.query or parsed.fragment or parsed.username:
         raise ModelError("后端模型地址格式不正确。", 503)
-    started = monotonic()
     first_text: float | None = None
 
     def finish(result: ChatResponse, raw: dict) -> ChatResponse:
         details = (raw.get("usage") or {}).get("output_tokens_details") or {}
-        logger.info(
-            "模型耗时 effort=%s 首字=%.1fs 总计=%.1fs 输入=%s 输出=%s 思考=%s",
-            settings.model_reasoning_effort,
-            (first_text or monotonic()) - started, monotonic() - started,
-            result.usage.input_tokens if result.usage else "?", result.usage.output_tokens if result.usage else "?",
-            details.get("reasoning_tokens", "?"),
-        )
+        first_s, total_s = round((first_text or monotonic()) - started, 1), round(monotonic() - started, 1)
+        usage = {"input_tokens": result.usage.input_tokens if result.usage else None,
+                 "output_tokens": result.usage.output_tokens if result.usage else None,
+                 "reasoning_tokens": details.get("reasoning_tokens")}
+        log_event(logger, "llm.done", f"模型完成：首字 {first_s}s，总计 {total_s}s，输入 {usage['input_tokens']}，输出 {usage['output_tokens']}，思考 {usage['reasoning_tokens']}",
+              effort=settings.model_reasoning_effort, first_token_s=first_s, total_s=total_s, reply_chars=len(result.reply), **usage)
         return result
 
     try:
         extra = json.loads(settings.model_extra_headers.get_secret_value())
         if not isinstance(extra, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in extra.items()):
             raise ValueError
+        register_secret(settings.model_api_key.get_secret_value())
+        for value in extra.values():
+            register_secret(value)
         headers = {**extra, "Authorization": f"Bearer {settings.model_api_key.get_secret_value()}", "Accept": "text/event-stream"}
         payload = {
             "model": settings.model_name,
@@ -101,6 +116,7 @@ async def stream_model(settings: Settings, messages: list[ChatMessage], instruct
             async with httpx.AsyncClient(timeout=httpx.Timeout(settings.model_timeout_seconds, connect=10), follow_redirects=False) as client:
                 async with client.stream("POST", f"{base}/responses", headers=headers, json=payload) as response:
                     if response.status_code != 200:
+                        log_event(logger, "llm.http", f"中转站返回 HTTP {response.status_code}", level=logging.WARNING, upstream_status=response.status_code)
                         raise _upstream_error(response.status_code)
                     # 某些兼容中转即使请求流式，仍返回普通 JSON；两种均核对完成状态。
                     if "application/json" in response.headers.get("content-type", ""):
@@ -133,6 +149,7 @@ async def stream_model(settings: Settings, messages: list[ChatMessage], instruct
                             if kind == "response.output_text.delta" and isinstance(event.get("delta"), str) and event["delta"]:
                                 if first_text is None:
                                     first_text = monotonic()
+                                    log_event(logger, "llm.first_token", f"模型首字 {first_text - started:.1f}s", first_token_s=round(first_text - started, 1))
                                 yield TextDelta(event["delta"])
                             elif kind == "response.completed":
                                 yield finish(_parse_response(event["response"], settings.model_name), event["response"])

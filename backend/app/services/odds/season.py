@@ -10,6 +10,7 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
+from app.core import applog
 from app.integrations import balldontlie
 from app.integrations.odds import PROJECT_ROOT
 from app.schemas.odds import OddsEvent
@@ -90,7 +91,8 @@ def refresh_season(root: Path | None = None, now: datetime | None = None) -> str
         return f"整季比分已保存（{mode}）：{season_label(season)} 常规赛 {scored} 场有比分"
     except balldontlie.ScheduleError as error:
         return f"整季比分未更新：{error}"
-    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
+        applog.event(logger, "task.error", "整季比分未更新：数据格式异常或保存失败", level=logging.WARNING, error=exc)
         return "整季比分未更新：数据格式异常或保存失败"
 
 
@@ -166,7 +168,4 @@ def strength_context(record: dict | None, events: list[OddsEvent]) -> dict:
 
 
 def log_refresh() -> None:
-    try:
-        logger.info(refresh_season())
-    except Exception:  # 可选步骤：任何意外都不能影响已保存的盘口。
-        logger.warning("整季比分未更新：意外错误")
+    applog.run_step(logger, "整季比分", refresh_season)

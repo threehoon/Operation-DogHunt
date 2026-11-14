@@ -2,6 +2,7 @@
 // NBA 助手：聊天记录、发送与等待、新对话；右侧是这次提问会读到的资料。对话只保存在本次打开的网站里。
 import { computed, nextTick, onActivated, onMounted, ref, watch } from 'vue'
 import { streamChat } from '@/api/chat'
+import { traceOf } from '@/api/client'
 import ChatComposer from '@/components/chat/ChatComposer.vue'
 import ChatContext from '@/components/chat/ChatContext.vue'
 import ChatTurn from '@/components/chat/ChatTurn.vue'
@@ -9,6 +10,7 @@ import ChatWaiting from '@/components/chat/ChatWaiting.vue'
 import ChatWelcome from '@/components/chat/ChatWelcome.vue'
 import { MAX_QUESTIONS, SELECTION_MARK, type Turn } from '@/components/chat/types'
 import SideDrawer from '@/components/common/SideDrawer.vue'
+import TraceLink from '@/components/logs/TraceLink.vue'
 import { demoTranscript } from '@/demo/transcript'
 import { oddsSelection, sampleChatRequested } from '@/stores/oddsSelection'
 import { checkModel, health, model, now } from '@/stores/system'
@@ -19,6 +21,9 @@ const turns = ref<Turn[]>([])
 const input = ref('')
 const loading = ref(false)
 const error = ref('')
+/** 出错那次请求的调用编号；只跟着本页的发送错误显示，提示被清掉时一起清掉。 */
+const errorTrace = ref<string | null>(null)
+watch(error, (value) => { if (!value) errorTrace.value = null })
 /** 正在等待回答的那个问题，以及发出的时刻。 */
 const pending = ref<Turn | null>(null)
 const startedAt = ref(0)
@@ -70,6 +75,7 @@ async function send(): Promise<void> {
   if (!question || loading.value || !ready.value || !model.status) return
   if (turns.value.length >= MAX_QUESTIONS * 2) {
     error.value = `本轮已达到 ${MAX_QUESTIONS} 次提问，请开始新对话。`
+    errorTrace.value = null
     return
   }
   const selection = oddsSelection.value
@@ -93,6 +99,7 @@ async function send(): Promise<void> {
     // 失败时把问题放回输入框，由用户决定是否重发；不自动重试。
     if (!input.value) input.value = question
     error.value = cause instanceof Error ? cause.message : '发送失败，请手动重试。'
+    errorTrace.value = traceOf(cause)
   } finally {
     loading.value = false
     pending.value = null
@@ -164,7 +171,7 @@ onActivated(consumeSampleRequest)
       </div>
 
       <div class="chat-dock">
-        <p v-if="alert" class="alert alert--bad" role="alert">{{ alert }}</p>
+        <p v-if="alert" class="alert alert--bad" role="alert"><span>{{ alert }}<TraceLink v-if="error && errorTrace" :id="errorTrace" /></span></p>
         <ChatComposer ref="composer" v-model="input" :loading="loading" :ready="ready" :blocked-reason="blockedReason" :selection-label="oddsSelection?.label ?? ''" @send="send" @clear="oddsSelection = null" />
       </div>
     </div>

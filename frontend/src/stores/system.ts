@@ -3,6 +3,7 @@
 import { computed, reactive, ref } from 'vue'
 import { getModelStatus } from '@/api/chat'
 import { getHealth } from '@/api/health'
+import { traceOf } from '@/api/client'
 import { getOdds } from '@/api/odds'
 import type { HealthResponse, ModelStatus } from '@/types/api'
 import type { OddsBoard } from '@/types/odds'
@@ -93,6 +94,8 @@ export const board = reactive({
   loading: false,
   refreshing: false,
   error: '',
+  /** 出错那次请求的调用编号，用来链接到调用日志；连接没到后端时为 null。 */
+  errorTrace: null as string | null,
   /** 最近一次操作是成功的手动更新，用来显示“更新成功”。 */
   refreshed: false,
   nextRefreshAt: 0,
@@ -116,6 +119,7 @@ async function runBoard(refresh: boolean): Promise<void> {
     board.loading = true
   }
   board.error = ''
+  board.errorTrace = null
   board.refreshed = false
   try {
     board.data = await getOdds(refresh)
@@ -123,6 +127,7 @@ async function runBoard(refresh: boolean): Promise<void> {
   } catch (reason) {
     // 失败时保留页面上原有的快照。
     board.error = reason instanceof Error ? reason.message : '盘口暂时不可用，请稍后重试。'
+    board.errorTrace = traceOf(reason)
   } finally {
     board.loading = false
     board.refreshing = false

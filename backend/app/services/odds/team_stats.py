@@ -10,6 +10,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from app.core import applog
 from app.integrations import dunkapi
 from app.integrations.odds import PROJECT_ROOT
 from app.schemas.odds import OddsEvent
@@ -103,7 +104,8 @@ def refresh_team_stats(root: Path | None = None, now: datetime | None = None) ->
         return f"球队效率已保存 {len(teams)} 队（{season - 1}-{str(season)[-2:]} 常规赛）"
     except dunkapi.DunkError as error:
         return f"球队效率未更新：{error}"
-    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
+        applog.event(logger, "task.error", "球队效率未更新：数据格式异常或保存失败", level=logging.WARNING, error=exc)
         return "球队效率未更新：数据格式异常或保存失败"
 
 
@@ -142,7 +144,4 @@ def efficiency_context(record: dict | None, events: list[OddsEvent], now: dateti
 
 
 def log_refresh() -> None:
-    try:
-        logger.info(refresh_team_stats())
-    except Exception:  # 可选步骤：任何意外都不能影响已保存的盘口。
-        logger.warning("球队效率未更新：意外错误")
+    applog.run_step(logger, "球队效率", refresh_team_stats)

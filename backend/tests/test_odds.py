@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
+import _isolation  # noqa: F401  先于 create_app，避免写进 data/
 from fastapi.testclient import TestClient
 
 from app.main import create_app

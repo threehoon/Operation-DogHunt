@@ -2,6 +2,7 @@
 
 import os
 
+from app.core.applog import register_secret
 from app.integrations.odds import PROJECT_ROOT
 
 PLACEHOLDERS = {"YOUR_API_KEY", "YOUR_KEY"}
@@ -23,4 +24,5 @@ def read_key(name: str) -> str | None:
         return None
     if any(c.isspace() for c in key):
         raise ValueError(f".env.local 中的 {name} 含空白字符，请检查。")
+    register_secret(key)
     return key

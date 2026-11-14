@@ -7,6 +7,9 @@ data/injuries/
 data/season/
 data/team_stats/
 data/dunkapi/
+# 调用日志（14 天）与聊天存档（最近 200 次），含完整提问与回答
+data/logs/
+data/traces/
 __pycache__/
 *.pyc
 .DS_Store

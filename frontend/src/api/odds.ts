@@ -1,4 +1,5 @@
 import type { OddsBoard } from '@/types/odds'
+import { TraceError, traceHeader } from './client'
 
 export async function getOdds(refresh = false): Promise<OddsBoard> {
   const controller = new AbortController()
@@ -11,8 +12,9 @@ export async function getOdds(refresh = false): Promise<OddsBoard> {
       signal: controller.signal,
       cache: 'no-store',
     })
+    const trace = traceHeader(response)
     const body = await response.json()
-    if (!response.ok) throw new Error(typeof body.detail === 'string' ? body.detail : `盘口请求失败（HTTP ${response.status}）`)
+    if (!response.ok) throw new TraceError(typeof body.detail === 'string' ? body.detail : `盘口请求失败（HTTP ${response.status}）`, trace)
     if (!['available', 'empty', 'unavailable'].includes(body.status) || !Array.isArray(body.events)
       || typeof body.stale !== 'boolean' || typeof body.message !== 'string') {
       throw new Error('盘口数据格式异常，请稍后重新读取。')

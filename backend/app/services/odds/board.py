@@ -8,6 +8,7 @@ from pathlib import Path
 from threading import Lock, Thread
 from time import monotonic
 
+from app.core import applog
 from app.integrations.odds import PROJECT_ROOT, odds_tool
 from app.schemas.odds import OddsBoard, OddsBookmaker, OddsEvent, OddsMarket, OddsOutcome
 from app.services.odds import injuries, schedule, season, team_stats
@@ -116,10 +117,21 @@ def refresh_board() -> OddsBoard:
             key = odds_tool.load_key()
         except odds_tool.FetchError as error:
             raise OddsRefreshError(str(error), 503) from None
+        applog.register_secret(key)
         _last_attempt = monotonic()
         requested = datetime.now(timezone.utc)
         try:
-            events, quota = odds_tool.fetch(key, requested)
+            started = monotonic()
+            try:
+                events, quota = odds_tool.fetch(key, requested)
+            except odds_tool.FetchError as error:
+                # 不记网址：The Odds API 的 Key 在查询参数里。
+                applog.event(logger, "ext.call", f"The Odds API 取数失败：{error}", level=logging.WARNING, error=error,
+                             provider="The Odds API", op="odds", status="error", ms=round((monotonic() - started) * 1000))
+                raise
+            applog.event(logger, "ext.call", f"The Odds API 返回 {len(events)} 场（剩余额度 {quota.get('remaining')}）",
+                         provider="The Odds API", op="odds", status=200, ms=round((monotonic() - started) * 1000),
+                         rows=len(events), quota=quota)
             fetched = datetime.now(timezone.utc)
             _, rows = odds_tool.normalize(events, fetched)
             # 先验证网站会读取的结构，再写入新文件；失败保留旧快照。
@@ -128,9 +140,11 @@ def refresh_board() -> OddsBoard:
             odds_tool.save_snapshot(events, rows, quota, requested, fetched)
         except odds_tool.FetchError as error:
             raise OddsRefreshError(str(error), 502) from None
-        except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
+            applog.event(logger, "odds.error", "盘口数据格式异常或新快照保存失败", level=logging.ERROR, error=exc)
             raise OddsRefreshError("数据格式异常或新快照保存失败，已保留原有快照；本次请求可能已消耗额度。", 502) from None
         # 盘口已保存；赛程、比分和伤病是可选资料，放到后台取，失败只记日志，不影响这次更新的结果。
+        applog.event(logger, "odds.saved", f"盘口已保存 {len(board.events)} 场", events=len(board.events))
         start_extras(board.events)
         return board
     finally:
@@ -147,14 +161,22 @@ def start_extras(events: list[OddsEvent]) -> Thread | None:
         logger.info("上一轮赛程与伤病更新还没结束，本次跳过")
         return None
 
+    # 线程不继承 contextvars：先取下触发它的请求编号，在线程里用自己的编号并记下来源。
+    parent = applog.current_trace()
+
     def run() -> None:
-        try:
-            schedule.log_refresh(events)
-            injuries.log_refresh(events)
-            team_stats.log_refresh()
-            season.log_refresh()
-        finally:
-            _extras_lock.release()
+        with applog.trace(applog.new_trace_id(task=True), parent=parent):
+            started = monotonic()
+            applog.event(logger, "task.start", "后台取数开始：赛程、伤病、球队效率、整季比分", task="odds-extras")
+            try:
+                schedule.log_refresh(events)
+                injuries.log_refresh(events)
+                team_stats.log_refresh()
+                season.log_refresh()
+            finally:
+                _extras_lock.release()
+                ms = round((monotonic() - started) * 1000)
+                applog.event(logger, "task.end", f"后台取数结束（{ms / 1000:.1f}s）", task="odds-extras", ms=ms)
 
     thread = Thread(target=run, name="odds-extras", daemon=True)
     thread.start()

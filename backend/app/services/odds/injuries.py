@@ -11,6 +11,7 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
+from app.core import applog
 from app.integrations import dunkapi
 from app.integrations.odds import PROJECT_ROOT
 from app.schemas.odds import OddsEvent
@@ -130,7 +131,8 @@ def refresh_injuries(events: list[OddsEvent], root: Path | None = None, now: dat
         return f"伤病已保存 {len(teams)} 队 {sum(map(len, teams.values()))} 人（报告日 {record['report_date']}）"
     except dunkapi.DunkError as error:
         return f"伤病未更新：{error}"
-    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
+        applog.event(logger, "task.error", "伤病未更新：数据格式异常或保存失败", level=logging.WARNING, error=exc)
         return "伤病未更新：数据格式异常或保存失败"
 
 
@@ -183,7 +185,4 @@ def injury_context(record: dict | None, events: list[OddsEvent], now: datetime |
 
 
 def log_refresh(events: list[OddsEvent]) -> None:
-    try:
-        logger.info(refresh_injuries(events))
-    except Exception:  # 可选步骤：任何意外都不能影响已保存的盘口。
-        logger.warning("伤病未更新：意外错误")
+    applog.run_step(logger, "伤病", refresh_injuries, events)

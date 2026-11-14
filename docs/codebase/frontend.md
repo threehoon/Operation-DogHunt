@@ -5,10 +5,10 @@
 | 项目 | 当前记录 |
 | --- | --- |
 | 模块标识 | frontend |
-| 核对日期 | 2026-11-14（Asia/Shanghai） |
-| 核对范围 | 2026-11-14 增量：沙盘篮球比赛第三轮（防守与出手规则，见“沙盘篮球比赛”一节）——`game/sim/` 全部文件（新增 `contact.ts`、`defense.ts`、`footwork.ts`）、`game/index.ts`、`game/hud.ts`、`GameHud.vue` 的出手条与操作说明、`StartupView.vue` 的一处回调；`game/view/`、`startup/` 的 3D 代码未动。同日更早：界面样式统一（见“界面样式”一节）——`styles/`、内页外壳与全部内页组件的样式块、启动页界面层的样式、`shell/backdrop.ts` 的着色器参数；`game/`、`startup/` 下的 3D 代码与 `GameHud.vue` 未动、未重测。以下为 2026-11-13 的记录——三页切换到深色方案：记录/统计共用演示数据和筛选、详情与导出、设置实际显示偏好、全局演示与公共外壳；同日增量：聊天改为逐段显示（`client.ts.postStream`、`chat.ts.streamChat`、`ChatView.vue`、`ChatTurn.vue`）；聊天输入区改为 Enter 发送、发送即清空（`ChatComposer.vue`、`ChatView.vue`）；用户发言下方加复制按钮（`ChatTurn.vue`）；未重测 3D |
+| 核对日期 | 2026-11-15（Asia/Shanghai） |
+| 核对范围 | 2026-11-15 增量：调用日志页（见“调用日志页”一节）——新增 `views/LogsView.vue`、`components/logs/`、`api/logs.ts`、`types/logs.ts`，改 `api/client.ts`、`api/chat.ts`、`api/odds.ts`、`router/index.ts`、`StationRail.vue`、`CommandPalette.vue`、`stores/system.ts`、`MatchBoard.vue`、`ChatView.vue`。2026-11-14 增量：沙盘篮球比赛第三轮（防守与出手规则，见“沙盘篮球比赛”一节）——`game/sim/` 全部文件（新增 `contact.ts`、`defense.ts`、`footwork.ts`）、`game/index.ts`、`game/hud.ts`、`GameHud.vue` 的出手条与操作说明、`StartupView.vue` 的一处回调；`game/view/`、`startup/` 的 3D 代码未动。同日更早：界面样式统一（见“界面样式”一节）——`styles/`、内页外壳与全部内页组件的样式块、启动页界面层的样式、`shell/backdrop.ts` 的着色器参数；`game/`、`startup/` 下的 3D 代码与 `GameHud.vue` 未动、未重测。以下为 2026-11-13 的记录——三页切换到深色方案：记录/统计共用演示数据和筛选、详情与导出、设置实际显示偏好、全局演示与公共外壳；同日增量：聊天改为逐段显示（`client.ts.postStream`、`chat.ts.streamChat`、`ChatView.vue`、`ChatTurn.vue`）；聊天输入区改为 Enter 发送、发送即清空（`ChatComposer.vue`、`ChatView.vue`）；用户发言下方加复制按钮（`ChatTurn.vue`）；未重测 3D |
 | 实现状态 | 部分实现：记录与统计共用沙盘联赛演示记录；设置可保存本机显示偏好并读取运行状态；正式预测、赛果、复盘保存和后台配置管理未实现 |
-| 验证程度 | 2026-11-14 篮球比赛第三轮：类型检查与构建通过（275 modules）；离线模拟（电脑互打 200 场、两种脚本打法各 100 场）、完美出手穷举 173,918 次、无头浏览器进入真实比赛看出手条，详见验证记录；没有真人试玩。2026-11-14 样式统一：类型检查与构建通过（268 modules），无头浏览器加模拟接口逐页截图核对，详见验证记录；没有逐项重测交互，未连真实后端。以下为 2026-11-13 的记录——本轮类型检查与构建通过（268 modules）；三页 1440px/390px 无整页横向溢出，筛选、CSV 导出、详情键盘、图表键盘、跨页数字一致、偏好刷新保留与演示关闭通过；接口均为模拟，未调用模型或刷新盘口 |
+| 验证程度 | 2026-11-15 调用日志页：类型检查与构建通过（292 modules），浏览器连运行中的后端核对列表、详情、筛选与 `?trace=` 定位；用户同意后真实聊天一次，聊天存档页签显示对话、回答、读到的资料与系统说明；报错提示里的编号链接未在浏览器里点到（需要一次真实失败）。2026-11-14 篮球比赛第三轮：类型检查与构建通过（275 modules）；离线模拟（电脑互打 200 场、两种脚本打法各 100 场）、完美出手穷举 173,918 次、无头浏览器进入真实比赛看出手条，详见验证记录；没有真人试玩。2026-11-14 样式统一：类型检查与构建通过（268 modules），无头浏览器加模拟接口逐页截图核对，详见验证记录；没有逐项重测交互，未连真实后端。以下为 2026-11-13 的记录——本轮类型检查与构建通过（268 modules）；三页 1440px/390px 无整页横向溢出，筛选、CSV 导出、详情键盘、图表键盘、跨页数字一致、偏好刷新保留与演示关闭通过；接口均为模拟，未调用模型或刷新盘口 |
 | Git 基准 | 篮球比赛第三轮：`a400953` + 未提交改动；样式统一：`41227b3` + 本地提交（未推送）；此前记录的基准为 `acce9c3` + 当时的工作区改动 |
 ## 负责什么
 
@@ -92,6 +92,21 @@ Vue 负责显示页面，TypeScript 用于检查数据和代码格式，Vue Rout
 - `DEFAULTS.demo = auto` 保持；设置、提示带、命令面板、记录/统计/记忆顶部按钮共同控制演示；有真实盘口时比赛页仍优先真实数据。
 - PR #2 的示例聊天切回真实聊天修复保留。3D、后端与盘口供应商逻辑未改。
 
+## 调用日志页（2026-11-15）
+
+后端每个响应都带调用编号（`X-Trace-Id`），这页按编号查看一次请求的全部步骤。后端说明见 [后端子块“调用日志”](backend.md)。
+
+| 源码 | 关键符号 | 用途 |
+| --- | --- | --- |
+| [client.ts](../../frontend/src/api/client.ts) | `TraceError` / `traceOf` / `traceHeader` | 请求失败时抛出带编号的错误；连接没到后端时编号为 null。`postStream` 改为返回编号，`streamChat` 与 `odds.ts` 的错误也带编号 |
+| [logs.ts](../../frontend/src/api/logs.ts) / [types/logs.ts](../../frontend/src/types/logs.ts) | `listTraces` / `getTrace` | 调 `/api/v1/logs/traces` 与详情接口，读到后检查数据形状 |
+| [LogsView.vue](../../frontend/src/views/LogsView.vue) | `/logs?trace=编号` | 筛选（今天、3 天、14 天；类型；只看有问题的；按编号、接口或说明搜索）、手动刷新、每 5 秒自动刷新（默认关，标签页在后台时不刷，离开页面自动关）、分页加载、详情（复制编号、复制 JSON、父任务与后台子任务互相跳转） |
+| [components/logs/](../../frontend/src/components/logs/labels.ts) | `TraceList` / `TraceTimeline` / `TraceChatArchive` / `TraceLink` / `labels.ts` | 列表；时间线显示离开始的毫秒数、中文步骤名、警告与错误颜色，带错误的步骤默认展开类型、原文（仅项目错误）与出错代码位置；聊天存档显示对话、回答、读到的资料与完整系统说明；报错提示后面的“编号 xxx，查看日志”链接 |
+| [StationRail.vue](../../frontend/src/components/layout/StationRail.vue) / [CommandPalette.vue](../../frontend/src/components/layout/CommandPalette.vue) / [router/index.ts](../../frontend/src/router/index.ts) | `rail-logs` / `logs` 命令 / `logs` 路由 | 侧栏底部入口（不加进 `STARTUP_MODULES`，避免改 3D 站点类型）、Ctrl/⌘+K 命令、页面标题“调用日志” |
+| [ChatView.vue](../../frontend/src/views/ChatView.vue) / [MatchBoard.vue](../../frontend/src/components/odds/MatchBoard.vue) / [system.ts](../../frontend/src/stores/system.ts) | `errorTrace` / `board.errorTrace` | 发送失败和盘口读取/更新失败的红色提示后附编号链接 |
+
+- 限制：手机宽度下侧栏底部区域整体隐藏，日志页只能输入地址进入（与“返回指挥室”相同）。前端自己的报错不上报后端。
+
 ## 界面样式（2026-11-14，当前样式）
 
 使用者的要求：保留全息感觉，去掉过重的“AI 味”和浮躁感，让界面有运筹帷幄的感觉。这一轮只动样式层，页面结构、数据、接口和 3D 场景本体没有变。取向和下面的规则是按这句要求在本地定的，未经项目负责人或美术评审。
@@ -133,6 +148,7 @@ Vue 负责显示页面，TypeScript 用于检查数据和代码格式，Vue Rout
 
 | 日期 | 方式 | 实际结果与边界 |
 | --- | --- | --- |
+| 2026-11-15 | 调用日志页：`npx vue-tsc --noEmit`、`npx vite build`；预览浏览器（5174 端口，转发到运行中的 8000 后端），1440×900 与窄屏 | 类型检查与构建通过，`292 modules transformed`。日志页列出 16 次真实调用，点选后详情显示时间线；页面内发一次 422 聊天请求和一次 404，两条都列为“出错”，`/logs?trace=编号` 直接打开对应详情，“只看有问题的”筛选只剩这两条；侧栏“调用日志”入口高亮；控制台只有这两次故意请求的报错。之后用户同意真实聊天一次（编号 `5692be868234`），时间线 6 步、聊天存档页签内容完整；未更新盘口，报错链接没有真实失败可点 |
 | 2026-11-14 | 篮球比赛第三轮：`npm --prefix frontend run build`；临时离线模拟脚本（直接调用 `createMatch` / `stepMatch`，未进仓库）；无头 Edge 进入真实比赛 | 类型检查与构建通过，`275 modules transformed`。电脑互打 200 场、两种脚本打法各 100 场全部正常终场；“无脑直冲篮下”每回合得分由 1.51 降到 0.65；各组模拟里约 3700 次完美出手全部命中，另穷举 173,918 次全部进筐；浏览器里出手条的绿区随位置出现或消失，没有脚本报错。数字与边界见“沙盘篮球比赛”一节。没有真人试玩，听感、手柄、手机未验证 |
 | 2026-11-14 | 累计盈亏图重做：`npm --prefix frontend run build`；无头 Edge 打开 `/statistics`（后端请求一律当作不通，页面用演示数据）并读取页面上的数字 | 类型检查与构建通过，`272 modules transformed`。默认筛选：期末 +6.34，与页面指标“模拟净盈亏” +6.34 一致；让分 +2.93 加大小分 +3.41 等于 6.34；悬停两处，提示框里合计都等于两部分之和（−4.55 = −1.74 − 2.81，−2.77 = −3.21 + 0.44）。只看让分时只剩一张图，期末 +2.93。全部时间（86 次结算、38 个结算日）与最近 7 天（没有回落时显示“没有回落”）各看了一次。键盘（只看让分时）：聚焦后按三次 ←，停在第 18 / 20 个结算日。从小图上悬停同样带出提示框。1440、1280（2 倍像素密度）、390 宽各看了截图，整页横向溢出为 0、pageerror 为 0。没有用读屏软件实测，没有在触屏实机上试过拖动查看；数据全部是演示记录 |
 | 2026-11-14 | 界面样式统一：`npm --prefix frontend run build`；无头 Edge（1 倍与 2 倍像素密度）加模拟接口截图 | 类型检查与构建通过，`268 modules transformed`。六个内页、404 和启动页在 1440 宽逐页看过；聊天、比赛、统计另看了 900 宽，六个内页另看了 390 宽；每张图的整页横向溢出为 0、pageerror 为 0。另外看了：聊天发送后的回答排版与等待卡片、全部报价与记录详情两个抽屉、命令面板、曲线悬停读数、后端不通时的演示盘口、关闭演示后的空状态。接口全部是模拟的，没有调用模型或刷新盘口。本轮没有改脚本逻辑，所以没有逐项重测键盘操作、CSV 导出、偏好保存等交互；3D 场景与比赛没有重测，只确认启动页界面层显示正常 |

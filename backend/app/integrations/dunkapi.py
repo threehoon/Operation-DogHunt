@@ -7,13 +7,16 @@
 """
 
 import json
+import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
+from time import monotonic
 
 import httpx
 
+from app.core.applog import event
 from app.integrations import local_keys
 from app.integrations.odds import PROJECT_ROOT
 
@@ -21,6 +24,7 @@ BASE_URL = "https://mcp.dunkapi.com/v1/"
 KEY_NAME = "DUNKAPI_API_KEY"
 TIMEOUT_SECONDS = 20
 # 官方 openapi.json 的 x-credits；未列出的工具不允许调用，避免意外扣费。
+logger = logging.getLogger(__name__)
 CREDITS = {"get_team_stats": 5, "get_injuries": 2, "get_standings": 2}
 # 留 50 给手动核对，免费档每月 500。
 MONTHLY_BUDGET = 450
@@ -82,12 +86,19 @@ def call(tool: str, body: dict, key: str, ledger: Path | None = None) -> dict:
     if tool not in CREDITS:
         raise DunkError(f"{tool} 未列入允许调用的工具。")
     _reserve(tool, ledger, datetime.now(timezone.utc))
+    started = monotonic()
+    fields = {"provider": "DunkAPI", "op": tool, "credits": CREDITS[tool]}
     try:
         with httpx.Client(timeout=TIMEOUT_SECONDS, follow_redirects=False) as client:
             response = client.post(BASE_URL + tool, json=body, headers={"x-api-key": key})
-    except httpx.HTTPError:
-        # 不输出异常原文，避免请求头信息进入日志。
+    except httpx.HTTPError as exc:
+        # 不输出异常原文，避免请求头信息进入日志；日志只记异常类型和位置。
+        event(logger, "ext.call", f"DunkAPI {tool} 连接失败或超时", level=logging.WARNING, error=exc,
+              status="error", ms=round((monotonic() - started) * 1000), **fields)
         raise DunkError(f"{tool} 连接失败或超时，未自动重试。") from None
+    event(logger, "ext.call", f"DunkAPI {tool} → HTTP {response.status_code}（{CREDITS[tool]} credits）",
+          level=logging.INFO if response.status_code == 200 else logging.WARNING,
+          status=response.status_code, ms=round((monotonic() - started) * 1000), **fields)
     if response.status_code != 200:
         messages = {400: "参数不被接受。", 401: "Key 无效或缺失。", 402: "账号 credits 不足。", 429: "请求太频繁，未自动重试。"}
         raise DunkError(f"{tool} HTTP {response.status_code}：" + messages.get(response.status_code, "接口返回错误。"))

@@ -38,6 +38,10 @@ const mac = /Mac|iPhone|iPad/.test(navigator.platform)
         <span>快速前往</span>
         <span class="rail-keys" aria-hidden="true"><kbd class="kbd">{{ mac ? '⌘' : 'Ctrl' }}</kbd><kbd class="kbd">K</kbd></span>
       </button>
+      <RouterLink to="/logs" class="rail-action rail-logs" active-class="active" title="调用日志：查看每次请求的步骤和出错位置">
+        <span>调用日志</span>
+        <span class="rail-return-tag" aria-hidden="true">LOG</span>
+      </RouterLink>
       <RouterLink to="/welcome" class="rail-action rail-return">
         <span>返回指挥室</span>
         <span class="rail-return-tag" aria-hidden="true">3D</span>
@@ -84,6 +88,8 @@ const mac = /Mac|iPhone|iPad/.test(navigator.platform)
 }
 .rail-action:hover { border-color: var(--line-3); background: rgba(160, 190, 202, .05); color: var(--text); }
 .rail-keys { display: flex; gap: 3px; }
+.rail-logs.active { border-color: var(--cyan-line); background: var(--cyan-soft); color: var(--text); }
+.rail-logs.active .rail-return-tag { color: var(--cyan); }
 .rail-return-tag { font-family: var(--font-num); font-size: 11px; font-weight: 500; letter-spacing: .1em; color: var(--text-3); }
 
 /* 中等宽度：只留图标。 */

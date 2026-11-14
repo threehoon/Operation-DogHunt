@@ -1,4 +1,4 @@
-import { getJson, postStream } from './client'
+import { getJson, postStream, TraceError } from './client'
 import type { ChatMessage, ChatResponse, ModelStatus } from '@/types/api'
 
 export async function getModelStatus(): Promise<ModelStatus> {
@@ -26,12 +26,12 @@ function isChatResponse(result: unknown): result is ChatResponse {
 export async function streamChat(messages: ChatMessage[], timeoutSeconds: number, oddsSelection: { event_id: string; bookmaker_key: string } | null, onText: (text: string) => void): Promise<ChatResponse> {
   let final: ChatResponse | null = null
   let failure = ''
-  await postStream('/chat/stream', { messages, odds_selection: oddsSelection }, (timeoutSeconds + 10) * 1000, ({ event, data }) => {
+  const trace = await postStream('/chat/stream', { messages, odds_selection: oddsSelection }, (timeoutSeconds + 10) * 1000, ({ event, data }) => {
     if (event === 'delta' && typeof data === 'object' && data !== null && 'text' in data && typeof data.text === 'string') onText(data.text)
     else if (event === 'done' && isChatResponse(data)) final = data
     else if (event === 'error') failure = typeof data === 'object' && data !== null && 'detail' in data && typeof data.detail === 'string' ? data.detail : '模型回答失败，本次未交付结果，请手动重试。'
   })
-  if (failure) throw new Error(failure)
-  if (!final) throw new Error('与后端的连接提前结束，没有收到完整回答，请手动重试。')
+  if (failure) throw new TraceError(failure, trace)
+  if (!final) throw new TraceError('与后端的连接提前结束，没有收到完整回答，请手动重试。', trace)
   return final
 }

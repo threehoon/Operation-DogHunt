@@ -36,6 +36,7 @@ const commands = computed<Command[]>(() => [
     station: item.id,
     run: () => void router.push(item.route),
   })),
+  { id: 'logs', label: '调用日志', hint: '按编号查看请求步骤与出错位置', keywords: '调用日志 日志 排查 错误 trace log 编号', run: () => void router.push('/logs') },
   { id: 'welcome', label: '返回指挥室', hint: '3D 启动页', keywords: '返回指挥室 启动页 welcome 3d', run: () => void router.push('/welcome') },
   {
     id: 'odds-format',

@@ -4,15 +4,18 @@
 近期赛程翻页最多 MAX_PAGES 次（近 30 天约 220 场，每页 100 场），整季比分最多 SEASON_MAX_PAGES 次。
 """
 
+import logging
 import time
 from collections import deque
 from threading import Lock
 
 import httpx
 
+from app.core.applog import event
 from app.integrations import local_keys
 
 ENDPOINT = "https://api.balldontlie.io/v1/games"
+logger = logging.getLogger(__name__)
 KEY_NAME = "BALLDONTLIE_API_KEY"
 MAX_PAGES = 4
 SEASON_MAX_PAGES = 15  # 常规赛 1230 场，每页 100 场
@@ -53,14 +56,20 @@ def _pages(params: list[tuple[str, str | int]], key: str, max_pages: int, label:
     games: list[dict] = []
     cursor = None
     with httpx.Client(timeout=TIMEOUT_SECONDS, follow_redirects=False) as client:
-        for _ in range(max_pages):
+        for page in range(1, max_pages + 1):
             query = params + [("per_page", 100)] + ([("cursor", cursor)] if cursor is not None else [])
             _wait_turn()
+            started = time.monotonic()
             try:
                 response = client.get(ENDPOINT, params=query, headers={"Authorization": key})
-            except httpx.HTTPError:
-                # 不输出异常原文，避免请求头信息进入日志。
+            except httpx.HTTPError as exc:
+                # 不输出异常原文，避免请求头信息进入日志；日志只记异常类型和位置。
+                event(logger, "ext.call", f"BALLDONTLIE {label}第 {page} 页连接失败或超时", level=logging.WARNING, error=exc,
+                      provider="BALLDONTLIE", op=label, page=page, status="error", ms=round((time.monotonic() - started) * 1000))
                 raise ScheduleError(f"{label}接口连接失败或超时，未自动重试。") from None
+            event(logger, "ext.call", f"BALLDONTLIE {label}第 {page} 页 → HTTP {response.status_code}",
+                  level=logging.INFO if response.status_code == 200 else logging.WARNING,
+                  provider="BALLDONTLIE", op=label, page=page, status=response.status_code, ms=round((time.monotonic() - started) * 1000))
             if response.status_code != 200:
                 messages = {401: "Key 无效或账号无权访问比赛接口。", 429: "超过免费档 5 次/分钟限制，未自动重试。"}
                 raise ScheduleError(f"HTTP {response.status_code}：" + messages.get(response.status_code, f"{label}接口返回错误。"))

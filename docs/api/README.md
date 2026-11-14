@@ -48,10 +48,12 @@ Base URL 是服务的基础地址，Endpoint 是最终请求的具体地址。�
 | `POST` | `http://127.0.0.1:8000/api/v1/chat/stream` | 逐段返回回答；调用模型，可能计费 | 同上 |
 | `GET` | `http://127.0.0.1:8000/api/v1/odds` | 只读本地盘口快照；不刷新供应商 | [odds.py](../../backend/app/api/routes/odds.py) |
 | `POST` | `http://127.0.0.1:8000/api/v1/odds/refresh` | 请求新盘口并后台补充赛程、伤病、球队效率和整季比分；可能消耗额度 | 同上、[board.py](../../backend/app/services/odds/board.py) |
+| `GET` | `http://127.0.0.1:8000/api/v1/logs/traces` | 调用日志列表（Query：`days` 1–14、`kind`、`problems_only`、`q`、`cursor`、`limit`）；只读本机日志文件，只接受本机请求，这里的请求不记日志 | [logs.py](../../backend/app/api/routes/logs.py) |
+| `GET` | `http://127.0.0.1:8000/api/v1/logs/traces/{trace_id}` | 一次调用的全部日志、触发的后台任务和聊天存档；编号格式 12 位十六进制，后台任务带 `task-` 前缀 | 同上 |
 | `GET` | `http://127.0.0.1:8000/api/docs` | 自动生成的接口说明页面 | [main.py](../../backend/app/main.py) |
 | `GET` | `http://127.0.0.1:8000/api/openapi.json` | OpenAPI：供程序读取的接口格式说明 | 同上 |
 
-接口总前缀由 `main.create_app` 的 `/api/v1` 决定，具体路由由 [api/router.py](../../backend/app/api/router.py) 注册。前端调用位置：[client.ts](../../frontend/src/api/client.ts)、[chat.ts](../../frontend/src/api/chat.ts)、[health.ts](../../frontend/src/api/health.ts)、[odds.ts](../../frontend/src/api/odds.ts)。当前没有单独暴露的伤病、球队效率、正式预测、长期记忆或统计后端 API，不要按页面名称猜造地址。
+所有经过后端的响应都带 `X-Trace-Id` 响应头（调用编号，由 [trace_middleware.py](../../backend/app/core/trace_middleware.py) 生成，`/api/v1/logs` 除外），前端报错提示据此链接到 `/logs?trace=编号` 页面。接口总前缀由 `main.create_app` 的 `/api/v1` 决定，具体路由由 [api/router.py](../../backend/app/api/router.py) 注册。前端调用位置：[client.ts](../../frontend/src/api/client.ts)、[chat.ts](../../frontend/src/api/chat.ts)、[health.ts](../../frontend/src/api/health.ts)、[odds.ts](../../frontend/src/api/odds.ts)。当前没有单独暴露的伤病、球队效率、正式预测、长期记忆或统计后端 API，不要按页面名称猜造地址。
 
 ## 地址变更时怎样同步
 
@@ -77,5 +79,6 @@ Skill 是 AI 执行任务时遵循的维护流程，不是后台监听器。手�
 
 | 日期 | 变化 | 依据与验证边界 |
 | --- | --- | --- |
+| 2026-11-15 | 新增调用日志两个只读接口与 `X-Trace-Id` 响应头 | 本机后端实测返回响应头，两个接口浏览器读取正常；没有新增或改动外部服务地址 |
 | 2026-11-15 | 本机文件补齐全部外部与内部 API 地址，Skill 要求两份清单同步 | 按用户补充要求合并查看入口，模型原有配置记录保留；未调用接口 |
 | 2026-11-15 | 建立统一清单、项目维护 Skill 和本机地址记录 | 核对 4 类外部服务、6 个业务接口和 2 个接口说明地址；静态核对，不调用供应商 |

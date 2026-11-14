@@ -21,6 +21,7 @@ const router = createRouter({
     { path: '/records', name: 'records', component: () => import('@/views/RecordsView.vue'), meta: { title: '预测记录' } },
     { path: '/statistics', name: 'statistics', component: () => import('@/views/StatisticsView.vue'), meta: { title: '效果统计' } },
     { path: '/memory', name: 'memory', component: () => import('@/views/MemoryView.vue'), meta: { title: '长期记忆' } },
+    { path: '/logs', name: 'logs', component: () => import('@/views/LogsView.vue'), meta: { title: '调用日志' } },
     { path: '/settings', name: 'settings', component: () => import('@/views/SettingsView.vue'), meta: { title: '设置' } },
     { path: '/:pathMatch(.*)*', name: 'not-found', component: () => import('@/views/NotFoundView.vue'), meta: { title: '页面不存在' } },
   ],

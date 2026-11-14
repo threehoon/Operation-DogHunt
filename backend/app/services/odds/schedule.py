@@ -9,6 +9,7 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
+from app.core import applog
 from app.integrations import balldontlie
 from app.integrations.odds import PROJECT_ROOT
 from app.schemas.odds import OddsEvent
@@ -103,7 +104,8 @@ def refresh_schedule(events: list[OddsEvent], root: Path | None = None, today: d
         return f"赛程已保存 {len(games)} 场，其中 {finals} 场有比分（{len(dates)} 个日期，{dates[0]} 至 {dates[-1]}）"
     except balldontlie.ScheduleError as error:
         return f"赛程未更新：{error}"
-    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
+        applog.event(logger, "task.error", "赛程未更新：数据格式异常或保存失败", level=logging.WARNING, error=exc)
         return "赛程未更新：数据格式异常或保存失败"
 
 
@@ -161,7 +163,4 @@ def rest_context(schedule: dict | None, events: list[OddsEvent]) -> dict:
 
 
 def log_refresh(events: list[OddsEvent]) -> None:
-    try:
-        logger.info(refresh_schedule(events))
-    except Exception:  # 可选步骤：任何意外都不能让已保存的盘口更新变成失败。
-        logger.warning("赛程未更新：意外错误")
+    applog.run_step(logger, "赛程", refresh_schedule, events)

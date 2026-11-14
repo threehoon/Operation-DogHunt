@@ -3,6 +3,7 @@
 import { computed, onMounted, ref } from 'vue'
 import DemoRibbon from '@/components/common/DemoRibbon.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import TraceLink from '@/components/logs/TraceLink.vue'
 import { boardIsDemo, demoEnabled, setDemo, shownBoard } from '@/stores/demo'
 import { board, boardBusy, boardStale, loadBoard, now, refreshBoard, refreshCooldown } from '@/stores/system'
 import { beijingDay, dateTime } from './format'
@@ -89,7 +90,7 @@ onMounted(() => {
     </dl>
 
     <div v-if="!boardIsDemo" class="alerts">
-      <p v-if="board.error" class="alert alert--bad" role="alert">{{ board.error }}<template v-if="board.data?.events.length"> 当前仍显示原有快照，采集时间见上方。</template></p>
+      <p v-if="board.error" class="alert alert--bad" role="alert">{{ board.error }}<template v-if="board.data?.events.length"> 当前仍显示原有快照，采集时间见上方。</template><TraceLink v-if="board.errorTrace" :id="board.errorTrace" /></p>
       <p v-else-if="board.refreshed" class="alert alert--ok" role="status">更新成功，已保存 {{ board.data?.events.length ?? 0 }} 场比赛。<template v-if="board.data?.quota?.last != null">本次消耗 {{ board.data.quota.last }} credits。</template></p>
       <p v-if="stale" class="alert alert--warn">采集已超过 15 分钟或时间异常，以下为保存的赛前报价，请手动更新。</p>
     </div>
