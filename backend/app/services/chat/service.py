@@ -12,7 +12,9 @@ from app.services.chat.prompt import ChatPromptError, static_prompt
 from app.services.odds.board import read_board
 from app.services.odds.injuries import load_injuries
 from app.services.odds.schedule import load_schedule
+from app.services.odds.season import load_season
 from app.services.odds.signals import load_history
+from app.services.odds.team_stats import load_team_stats
 
 _inflight = asyncio.Semaphore(1)
 logger = logging.getLogger(__name__)
@@ -25,7 +27,9 @@ async def build_instructions(request: ChatRequest) -> str:
     history = await asyncio.to_thread(load_history) if board.status == "available" else None
     schedule = await asyncio.to_thread(load_schedule) if board.status == "available" else None
     injuries = await asyncio.to_thread(load_injuries) if board.status == "available" else None
-    context = odds_context(board, request.odds_selection, request.messages, history, schedule, injuries)
+    season = await asyncio.to_thread(load_season) if board.status == "available" else None
+    team_stats = await asyncio.to_thread(load_team_stats) if board.status == "available" else None
+    context = odds_context(board, request.odds_selection, request.messages, history, schedule, injuries, season, team_stats)
     # 北京时间没有夏令时，用固定 UTC+8；Windows 默认没有 tzdata，ZoneInfo("Asia/Shanghai") 会报错
     now = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
     try:
@@ -82,5 +86,10 @@ async def prepare_stream(request: ChatRequest, settings: Settings) -> AsyncItera
                         yield _sse("done", item.model_dump())
             except ModelError as error:
                 yield _sse("error", {"detail": str(error), "status": error.status_code})
+            except Exception as exc:
+                # 响应头已发出，未捕获的异常只会让连接直接断开，网页经 Vite 转发时会一直等到超时；
+                # 这里一律转成 error 事件。日志只记类型，不记原文，避免带出认证信息。
+                logger.error("聊天事件流意外失败：%s.%s", type(exc).__module__, type(exc).__name__)
+                yield _sse("error", {"detail": "后端处理回答时意外出错，本次未交付结果；请查看后端日志后手动重试。", "status": 500})
 
     return events()

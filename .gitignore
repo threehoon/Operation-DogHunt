@@ -4,6 +4,9 @@
 data/odds/
 data/schedule/
 data/injuries/
+data/season/
+data/team_stats/
+data/dunkapi/
 __pycache__/
 *.pyc
 .DS_Store
@@ -20,3 +23,6 @@ dist/
 htmlcov/
 data/app/
 *.log
+
+# 本机 API 地址记录（不含 Key，仍避免公开私人中转地址）
+docs/api/local-addresses.local.md

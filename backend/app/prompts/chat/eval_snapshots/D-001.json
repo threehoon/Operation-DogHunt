@@ -222,38 +222,45 @@
     ]
   },
   "injuries": {
-    "provider": "ESPN",
+    "provider": "DunkAPI",
     "fetched_at": "2026-11-14T00:30:00Z",
+    "report_date": "2026-11-13",
     "teams": {
       "Los Angeles Lakers": [
         {
+          "player_id": "9001",
           "player": "Lakers Guard A",
           "position": "G",
           "status": "Out",
-          "reported": "2026-11-13T20:00Z",
           "injury": "Ankle",
+          "detail": "Sprain",
           "return_date": null,
-          "comment": "Guard A (ankle), the team's leading scorer at 27 points per game, has been ruled out for Friday's game at Denver."
+          "listed_since": "2026-11-14T00:30:00Z",
+          "listed_after": "2026-11-13T12:00:00Z"
         },
         {
+          "player_id": "9002",
           "player": "Lakers Center B",
           "position": "C",
           "status": "Out",
-          "reported": "2026-10-01T18:00Z",
           "injury": "Knee",
+          "detail": "Surgery",
           "return_date": "2026-12-20",
-          "comment": "Center B (knee) has not played this season and remains on track for a late-December return."
+          "listed_since": "2026-10-01T18:00:00Z",
+          "listed_after": null
         }
       ],
       "Denver Nuggets": [
         {
+          "player_id": "9003",
           "player": "Nuggets Wing C",
           "position": "F",
           "status": "Day-To-Day",
-          "reported": "2026-11-13T18:00Z",
           "injury": "Hamstring",
+          "detail": "Strain",
           "return_date": null,
-          "comment": "Wing C (hamstring), a bench forward averaging 14 minutes, is questionable for Friday against the Lakers."
+          "listed_since": "2026-11-14T00:30:00Z",
+          "listed_after": "2026-11-13T12:00:00Z"
         }
       ]
     }

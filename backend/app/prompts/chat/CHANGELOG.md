@@ -15,6 +15,58 @@
 - 字数：旧 → 新
 ```
 
+## 2026-11-14｜“分析全部”也附带每场资料
+
+- 原因：issues.md I-008（取消选场后问别的比赛只读到原来那场；整表时不附带伤病、战绩等资料，用户要求加上）
+- 静态提示词总字数：7837 → 7959（不含程序追加的时间与快照）
+- 回归试跑：未跑
+
+### chat_odds_v7（替换 chat_odds_v6）
+- 新增一句：market_signals 到 team_efficiency 最多覆盖开赛最早的 15 场，details_limit 非空时其余比赛只有报价，写“资料未载入”，不凭记忆补。
+- 字数：3156 → 3278
+
+## 2026-11-14｜伤病来源换成 DunkAPI，新伤病改由服务端判断
+
+- 原因：issues.md I-007（ESPN 伤病接口条款未核实；用户决定换成 DunkAPI，DunkAPI 没有报告时间和短评）
+- 静态提示词总字数：7599 → 7837（不含程序追加的时间与快照）
+- 回归试跑：未跑
+
+### chat_sources_v5（替换 chat_sources_v4）
+- 伤病列表来源改为 DunkAPI，说明只有当前状态、没有报告时间和短评；与用户提供的伤病冲突时写 DunkAPI 的采集时间。
+- 字数：841 → 864
+
+### chat_odds_v6（替换 chat_odds_v5）
+- injuries 一节改为 DunkAPI 字段：report_date、detail、listed_since、每队 last_game、服务端给出的 new_since_last_game（true / false / null，不让模型自己比时间）；去掉 reported 与 comment；球员作用只能用 C 级判断。
+- 字数：2998 → 3156
+
+### chat_method_v7（替换 chat_method_v6）
+- 伤病与阵容：按 new_since_last_game 区分已在战绩里的缺阵和新伤病；为 null 时写“无法确定是否新伤病”，不作为选边理由；新伤病的影响按能确定的作用估计，不明时写明不确定。
+- 字数：1547 → 1585
+
+### chat_output_v5（替换 chat_output_v4）
+- 资料列示例改为 DunkAPI 伤病；“新伤病”定义改为 new_since_last_game 为 true 的 Out。
+- 字数：1963 → 1982
+
+## 2026-11-14｜接入整季实力分和 DunkAPI 球队效率，战绩推算优先用整季数据
+
+- 原因：issues.md I-006（实力只看近 30 天原始净胜分，没有对手强弱修正；节奏只有原始场均总分，没有回合数和攻防效率）
+- 静态提示词总字数：6551 → 7599（不含程序追加的时间与快照）
+- 回归试跑：未跑
+
+### chat_sources_v4（替换 chat_sources_v3）
+- A 级新增整季实力分（season_strength，BALLDONTLIE 比分，服务端推算，注明“估算”）和球队效率（team_efficiency，DunkAPI 赛季累计，projection 注明“估算”）。
+- 字数：679 → 841
+
+### chat_odds_v5（替换 chat_odds_v4）
+- 原有内容不变，新增 season_strength、team_efficiency 两节：rating、rank、schedule_strength、home_edge、model_home_margin 的含义；too_few_games 时不自己补算；pace 与攻防效率、四要素为百分数；projection 的推算公式；赛季累计值不反映近期和新伤病；stale 超过 36 小时。
+- 字数：2280 → 2998
+
+### chat_method_v6（替换 chat_method_v5）
+- 实力差距：主队推算净胜分优先用 season_strength.model_home_margin，没有时退回 team_form + 2；回答写明用的是哪一种。门槛（3 分）不变。
+- 节奏：推算总分优先用 team_efficiency.projection.total，没有时退回两队 avg_game_total 平均。门槛（4 分）不变。
+- 整季与近期方向相反时以整季为准，近期写一句；last_5 和 pace 只写说明，不另算因素。
+- 字数：1379 → 1547
+
 ## 2026-11-14｜接入近期战绩和 ESPN 伤病，分析写出数据推算和具体来源
 
 - 原因：issues.md I-005（选场分析依据单薄、没有来源：服务端只给盘口和休息天数，实力、节奏、伤病几项只能写缺失或用 C 级泛泛判断）

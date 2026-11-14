@@ -18,7 +18,7 @@ from app.main import create_app
 from app.schemas.chat import ChatMessage, ChatResponse, OddsSelection
 from app.schemas.odds import OddsBoard
 from app.services.chat import prompt as chat_prompt
-from app.services.chat.odds_context import mentioned_teams, odds_context
+from app.services.chat.odds_context import focus_teams, mentioned_teams, odds_context
 from app.services.odds.board import build_board
 from test_odds import snapshot
 
@@ -111,6 +111,15 @@ class ModelTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(error.exception.status_code, 504)
         self.assertNotIn("secret", str(error.exception))
 
+    async def test_unparsable_proxy_env_is_clear_503(self):
+        # 2026-11-14 实际故障：NO_PROXY 含 "::1/128" 时 httpx 0.28 在创建客户端时抛 InvalidURL，请求根本没发出。
+        with patch("app.integrations.llm.httpx.AsyncClient", side_effect=httpx.InvalidURL("Invalid port: ':1'")):
+            with self.assertRaises(ModelError) as error:
+                await request_model(settings(), [ChatMessage(role="user", content="测试")], "系统要求")
+        self.assertEqual(error.exception.status_code, 503)
+        self.assertIn("NO_PROXY", str(error.exception))
+        self.assertNotIn("test-secret", str(error.exception))
+
     async def test_missing_configuration_does_not_call_provider(self):
         handler = AsyncMock()
         with self.assertRaises(ModelError) as error:
@@ -136,6 +145,10 @@ class RouteTests(unittest.IsolatedAsyncioTestCase):
         injuries = patch("app.services.chat.service.load_injuries", return_value=None)
         injuries.start()
         self.addCleanup(injuries.stop)
+        for name in ("load_season", "load_team_stats"):
+            loader = patch(f"app.services.chat.service.{name}", return_value=None)
+            loader.start()
+            self.addCleanup(loader.stop)
 
     async def asyncTearDown(self):
         await self.client.aclose()
@@ -268,6 +281,10 @@ class StreamTests(unittest.IsolatedAsyncioTestCase):
         injuries = patch("app.services.chat.service.load_injuries", return_value=None)
         injuries.start()
         self.addCleanup(injuries.stop)
+        for name in ("load_season", "load_team_stats"):
+            loader = patch(f"app.services.chat.service.{name}", return_value=None)
+            loader.start()
+            self.addCleanup(loader.stop)
 
     async def asyncTearDown(self):
         await self.client.aclose()
@@ -307,6 +324,31 @@ class StreamTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(sse_events(response.text)[-1], ("error", {"detail": "模型回答失败或被截断", "status": 502}))
             self.assertEqual((await self.client.post("/api/v1/chat/stream", json=payload)).status_code, 200)
 
+    async def test_unparsable_proxy_env_becomes_error_event(self):
+        # 走真实 stream_model：以前这里响应头发出后连接直接断开，网页一直等到超时。
+        payload = {"messages": [{"role": "user", "content": "测试"}]}
+        with patch("app.integrations.llm.httpx.AsyncClient", side_effect=httpx.InvalidURL("Invalid port: ':1'")):
+            response = await self.client.post("/api/v1/chat/stream", json=payload)
+        self.assertEqual(response.status_code, 200)
+        kind, data = sse_events(response.text)[-1]
+        self.assertEqual((kind, data["status"]), ("error", 503))
+        self.assertIn("NO_PROXY", data["detail"])
+
+    async def test_unexpected_exception_is_error_event_and_lock_is_released(self):
+        async def provider(*_):
+            yield TextDelta("半截")
+            raise RuntimeError("内部细节 test-secret")
+
+        payload = {"messages": [{"role": "user", "content": "测试"}]}
+        with patch("app.services.chat.service.stream_model", side_effect=provider):
+            with self.assertLogs("app.services.chat.service", level="ERROR") as logs:
+                response = await self.client.post("/api/v1/chat/stream", json=payload)
+            kind, data = sse_events(response.text)[-1]
+            self.assertEqual((kind, data["status"]), ("error", 500))
+            self.assertNotIn("test-secret", response.text)
+            self.assertNotIn("test-secret", "\n".join(logs.output))
+            self.assertEqual((await self.client.post("/api/v1/chat/stream", json=payload)).status_code, 200)
+
     async def test_errors_before_start_use_http_status(self):
         with patch("app.services.chat.service.stream_model") as call:
             gone = {"messages": [{"role": "user", "content": "分析"}], "odds_selection": {"event_id": "missing", "bookmaker_key": "a"}}
@@ -332,6 +374,24 @@ class FocusTests(unittest.TestCase):
         self.assertEqual((context["focus"]["matched_events"], context["events"]), (0, []))
         self.assertIsNone(json.loads(odds_context(board, None, [ChatMessage(role="user", content="今天有什么比赛")]))["focus"])
 
+    def test_cancelled_selection_and_wide_questions_stop_follow_up_focus(self):
+        selected = ChatMessage(role="user", content="这场怎么看\n\n本次选场：凯尔特人 vs 猛龙 · 11-12 08:30 · FanDuel")
+        answer = ChatMessage(role="assistant", content="略")
+        # 取消选场后再问：选场标签不再算作提到球队，给整张表。
+        self.assertEqual(focus_teams([selected, answer, ChatMessage(role="user", content="那大小分呢")]), set())
+        # 自己写了球队名仍然沿用。
+        typed = ChatMessage(role="user", content="猛龙这场怎么看\n\n本次选场：凯尔特人 vs 猛龙 · FanDuel")
+        self.assertEqual(focus_teams([typed, answer, ChatMessage(role="user", content="那大小分呢")]), {"Toronto Raptors"})
+        named = ChatMessage(role="user", content="猛龙这场")
+        for wide in ("别的比赛场次你看不到吗", "分析全部的", "其他场呢", "哪场把握大", "明天有几场比赛", "除了猛龙，别的比赛呢"):
+            self.assertEqual(focus_teams([named, answer, ChatMessage(role="user", content=wide)]), set(), wide)
+        # 问过整张表之后的追问不再回到更早的球队。
+        later = [named, answer, ChatMessage(role="user", content="其他比赛呢"), answer, ChatMessage(role="user", content="那大小分呢")]
+        self.assertEqual(focus_teams(later), set())
+        # “全场让分”“这场”不算问多场。
+        for narrow in ("那全场让分呢", "这场大小分呢"):
+            self.assertEqual(focus_teams([named, answer, ChatMessage(role="user", content=narrow)]), {"Toronto Raptors"}, narrow)
+
     def test_schedule_rest_follows_focused_events(self):
         board = build_board(snapshot())  # 猛龙主场对凯尔特人，美国东部日期 2026-11-11
         record = {"provider": "BALLDONTLIE", "fetched_at": "2026-11-11T12:00:00Z", "dates": ["2026-11-06", "2026-11-07", "2026-11-08", "2026-11-09", "2026-11-10", "2026-11-11"], "games": [
@@ -351,7 +411,8 @@ class FocusTests(unittest.TestCase):
             {"id": 1, "date": "2026-11-09", "home": "Toronto Raptors", "away": "Miami Heat", "status": "Final", "home_score": 110, "away_score": 100},
             {"id": 2, "date": "2026-11-10", "home": "Boston Celtics", "away": "Toronto Raptors", "status": "Final", "home_score": 120, "away_score": 118},
             {"id": 3, "date": "2026-11-11", "home": "Toronto Raptors", "away": "Boston Celtics", "status": ""}]}
-        injuries = {"provider": "ESPN", "fetched_at": "2026-11-11T12:00:00Z", "teams": {"Boston Celtics": [{"player": "A", "status": "Out"}]}}
+        injuries = {"provider": "DunkAPI", "fetched_at": "2026-11-11T12:00:00Z", "teams": {"Boston Celtics": [
+            {"player": "A", "status": "Out", "listed_since": "2026-11-11T12:00:00Z", "listed_after": "2026-11-11T08:00:00Z"}]}}
         ask = [ChatMessage(role="user", content="猛龙这场")]
         context = json.loads(odds_context(board, None, ask, None, record, injuries))
         game = context["team_form"]["events"]["game"]
@@ -359,10 +420,30 @@ class FocusTests(unittest.TestCase):
         self.assertEqual((game["away"]["games"], game["away"]["avg_margin"], game["home_minus_away_avg_margin"]), (1, 2.0, 2.0))
         hurt = context["injuries"]["events"]["game"]
         self.assertEqual((hurt["away"]["listed"], hurt["away"]["players"][0]["player"], hurt["home"]["listed"]), (True, "A", False))
+        # 凯尔特人最后一场 11-10，上一份快照 11-11 还没列出 A → 服务端判为新伤病。
+        self.assertEqual((hurt["away"]["last_game"], hurt["away"]["players"][0]["new_since_last_game"]), ("2026-11-10", True))
         empty = json.loads(odds_context(board, None, ask))
         self.assertEqual((empty["team_form"]["status"], empty["injuries"]["status"]), ("unavailable", "unavailable"))
         whole = json.loads(odds_context(board, None, [ChatMessage(role="user", content="今天有什么比赛")], None, record, injuries))
-        self.assertEqual((whole["team_form"]["status"], whole["injuries"]["status"]), ("available", "available"))  # 只有 1 场，仍算少数比赛
+        self.assertEqual((whole["team_form"]["status"], whole["injuries"]["status"]), ("available", "available"))
+        self.assertIsNone(whole["details_limit"])
+
+    def test_whole_board_details_cover_earliest_events_up_to_limit(self):
+        raw = snapshot()
+        later = json.loads(json.dumps(raw["raw_events"][0]))
+        later.update(id="later", commence_time="2026-11-13T00:10:00Z", home_team="Miami Heat", away_team="Boston Celtics")
+        raw["raw_events"].insert(0, later)  # 晚开赛的放在前面，确认按开赛时间而不是列表顺序取
+        board = build_board(raw)
+        record = {"provider": "BALLDONTLIE", "fetched_at": "2026-11-11T12:00:00Z", "dates": ["2026-11-11"], "games": []}
+        ask = [ChatMessage(role="user", content="分析全部比赛")]
+        context = json.loads(odds_context(board, None, ask, None, record))
+        self.assertEqual((len(context["events"]), context["details_limit"]), (2, None))
+        self.assertEqual(set(context["schedule_rest"]["events"]), {"game", "later"})
+        with patch("app.services.chat.odds_context.DETAIL_EVENT_LIMIT", 1):
+            context = json.loads(odds_context(board, None, ask, None, record))
+        self.assertEqual(len(context["events"]), 2)  # 报价仍然全部给出
+        self.assertEqual(context["details_limit"], {"covered": 1, "total": 2})
+        self.assertEqual(set(context["schedule_rest"]["events"]), {"game"})
 
 
 class ChatPromptTests(unittest.TestCase):
@@ -488,8 +569,10 @@ class EvalSnapshotTests(unittest.TestCase):
         hurt = context["injuries"]
         self.assertFalse(hurt["stale"])
         lakers = {p["player"]: p for p in hurt["events"]["s001-lal-den"]["away"]["players"]}
-        self.assertGreater(lakers["Lakers Guard A"]["reported"], form["away"]["last_game"])  # 新伤病
-        self.assertLess(lakers["Lakers Center B"]["reported"], data["schedule"]["form_from"])  # 已在战绩里
+        self.assertEqual(hurt["events"]["s001-lal-den"]["away"]["last_game"], form["away"]["last_game"])
+        self.assertTrue(lakers["Lakers Guard A"]["new_since_last_game"])  # 新伤病
+        self.assertFalse(lakers["Lakers Center B"]["new_since_last_game"])  # 已在战绩里
+        self.assertLess(lakers["Lakers Center B"]["listed_since"], data["schedule"]["form_from"])
 
 
 if __name__ == "__main__":

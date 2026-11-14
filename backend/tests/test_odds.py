@@ -87,12 +87,15 @@ class OddsTests(unittest.TestCase):
             extras.assert_not_called()
 
     def test_extras_run_in_background_and_skip_while_busy(self):
-        with patch.object(board.schedule, 'log_refresh') as schedule, patch.object(board.injuries, 'log_refresh') as injuries:
+        with patch.object(board.schedule, 'log_refresh') as schedule, patch.object(board.injuries, 'log_refresh') as injuries, \
+             patch.object(board.team_stats, 'log_refresh') as stats, patch.object(board.season, 'log_refresh') as season:
             with board._extras_lock:
                 self.assertIsNone(board.start_extras([]))
             board.start_extras(['e']).join(5)
             schedule.assert_called_once_with(['e'])
             injuries.assert_called_once_with(['e'])
+            stats.assert_called_once_with()
+            season.assert_called_once_with()
             self.assertFalse(board._extras_lock.locked())
 
     def test_get_has_no_external_call_and_form_cannot_refresh(self):
@@ -135,52 +138,88 @@ class TeamFormTests(unittest.TestCase):
         self.assertNotIn("home_minus_away_avg_margin", result["events"]["game"])
 
 
-def espn_team(name, *players):
-    return {"id": "1", "displayName": name, "injuries": [
-        {"status": status, "date": "2026-11-11T18:00Z", "shortComment": "x" * 200, "longComment": "长评不保存",
-         "athlete": {"displayName": player, "position": {"abbreviation": "G"}}, "details": {"type": "Ankle", "returnDate": "2026-11-20"}}
-        for player, status in players]}
+def dunk_player(pid, name, team, status="Out", **extra):
+    return {"player_id": pid, "name": name, "position": "G", "team": team, "status": status,
+            "type": "Ankle", "detail": None, "return_date": "2026-11-20", **extra}
 
 
 class InjuryTests(unittest.TestCase):
-    """ESPN 伤病；不访问真实接口。"""
+    """DunkAPI 伤病；不访问真实接口。"""
 
     def setUp(self):
         from app.services.odds import injuries
         self.injuries = injuries
         self.events = board.build_board(snapshot(), datetime(2026, 11, 12, tzinfo=timezone.utc)).events
 
-    def test_normalize_maps_clippers_skips_unknown_and_sorts_out_first(self):
+    def test_normalize_maps_abbreviations_skips_unknown_and_sorts_out_first(self):
         teams = self.injuries.normalize_injuries([
-            espn_team("LA Clippers", ("B", "Day-To-Day"), ("C", "Out")), espn_team("Seattle SuperSonics", ("D", "Out")),
-            {"displayName": "Toronto Raptors", "injuries": [{"status": "Out"}]}])
-        self.assertEqual(sorted(teams), ["Los Angeles Clippers", "Toronto Raptors"])
-        self.assertEqual(teams["Toronto Raptors"], [])
+            dunk_player("1", "B", "LAC", "Day-To-Day"), dunk_player("2", "C", "LAC"), dunk_player("3", "D", "SEA"),
+            dunk_player("4", "E", "GS"), dunk_player("5", "F", "UTAH"), dunk_player("6", "G", "WSH", "Suspension"),
+            {"team": "TOR", "status": "Out"}])
+        self.assertEqual(sorted(teams), ["Golden State Warriors", "Los Angeles Clippers", "Utah Jazz", "Washington Wizards"])
         first = teams["Los Angeles Clippers"][0]
-        self.assertEqual((first["player"], first["status"], first["injury"], first["return_date"], len(first["comment"])), ("C", "Out", "Ankle", "2026-11-20", 160))
-        self.assertNotIn("longComment", first)
+        self.assertEqual((first["player_id"], first["player"], first["status"], first["injury"], first["return_date"]),
+                         ("2", "C", "Out", "Ankle", "2026-11-20"))
+        self.assertEqual({self.injuries.team_name(code) for code in ("GS", "NO", "NY", "SA", "UTAH", "WSH")},
+                         {"Golden State Warriors", "New Orleans Pelicans", "New York Knicks", "San Antonio Spurs", "Utah Jazz", "Washington Wizards"})
         with self.assertRaises(ValueError):
-            self.injuries.normalize_injuries([espn_team("Seattle SuperSonics", ("D", "Out"))])
+            self.injuries.normalize_injuries([dunk_player("3", "D", "SEA")])
 
-    def test_refresh_load_context_and_failure_keeps_old_file(self):
-        espn = self.injuries.espn
+    def test_refresh_tracks_listing_time_and_failure_keeps_old_file(self):
+        dunkapi = self.injuries.dunkapi
+        start = datetime(2026, 11, 11, 12, tzinfo=timezone.utc)
+        first = {"date": "2026-11-11", "count": 2, "injuries": [dunk_player("1", "A", "BOS"), dunk_player("2", "B", "BOS", "Day-To-Day")]}
+        later = {"date": "2026-11-13", "count": 3, "injuries": [dunk_player("1", "A", "BOS"), dunk_player("2", "B", "BOS"), dunk_player("3", "C", "BOS")]}
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            with patch.object(espn, "fetch_injuries") as fetch:
+            with patch.object(dunkapi, "load_key", return_value="k"), patch.object(dunkapi, "call") as call:
                 self.assertIn("跳过", self.injuries.refresh_injuries([], root))
-                fetch.assert_not_called()
-            with patch.object(espn, "fetch_injuries", return_value=[espn_team("Boston Celtics", ("A", "Out"))]):
-                self.assertIn("已保存 1 队 1 人", self.injuries.refresh_injuries(self.events, root))
-            with patch.object(espn, "fetch_injuries", side_effect=espn.InjuryError("HTTP 503")):
-                self.assertIn("未更新", self.injuries.refresh_injuries(self.events, root))
-            self.assertEqual(len(list(root.glob("*/injuries.json"))), 1)
+                call.assert_not_called()
+            with patch.object(dunkapi, "load_key", return_value=None), patch.object(dunkapi, "call") as call:
+                self.assertIn("未配置", self.injuries.refresh_injuries(self.events, root))
+                call.assert_not_called()
+            with patch.object(dunkapi, "load_key", return_value="k"), patch.object(dunkapi, "call", return_value=first) as call:
+                self.assertIn("已保存 1 队 2 人", self.injuries.refresh_injuries(self.events, root, start))
+                call.assert_called_once_with("get_injuries", {"league": "nba"}, "k")
+                self.assertIn("跳过", self.injuries.refresh_injuries(self.events, root, start + timedelta(hours=3)))
+                self.assertEqual(call.call_count, 1)
+            later_time = start + timedelta(days=2)
+            with patch.object(dunkapi, "load_key", return_value="k"), patch.object(dunkapi, "call", return_value=later):
+                self.assertIn("已保存 1 队 3 人", self.injuries.refresh_injuries(self.events, root, later_time))
+            with patch.object(dunkapi, "load_key", return_value="k"), \
+                 patch.object(dunkapi, "call", side_effect=dunkapi.DunkError("get_injuries HTTP 429")):
+                self.assertIn("未更新", self.injuries.refresh_injuries(self.events, root, later_time + timedelta(hours=5)))
+            self.assertEqual(len(list(root.glob("*/injuries.json"))), 2)
             record = self.injuries.load_injuries(root)
-        fetched = datetime.fromisoformat(record["fetched_at"].replace("Z", "+00:00"))
-        context = self.injuries.injury_context(record, self.events, fetched + timedelta(hours=1))
+        players = {p["player"]: p for p in record["teams"]["Boston Celtics"]}
+        # A 沿用第一次的时间；B 状态变了、C 新出现，都记上一份的采集时间为 listed_after。
+        self.assertEqual((players["A"]["listed_since"], players["A"]["listed_after"]), ("2026-11-11T12:00:00Z", None))
+        self.assertEqual((players["B"]["listed_since"], players["B"]["listed_after"]), ("2026-11-13T12:00:00Z", "2026-11-11T12:00:00Z"))
+        self.assertEqual(record["report_date"], "2026-11-13")
+        form = {"events": {"game": {"home": {"last_game": "2026-11-12"}, "away": {"last_game": "2026-11-10"}}}}
+        context = self.injuries.injury_context(record, self.events, later_time + timedelta(hours=1), form)
         game = context["events"]["game"]
-        self.assertEqual((context["stale"], game["away"]["listed"], game["away"]["players"][0]["player"], game["home"]), (False, True, "A", {"team": "Toronto Raptors", "listed": False, "players": []}))
-        self.assertTrue(self.injuries.injury_context(record, self.events, fetched + timedelta(hours=13))["stale"])
+        flags = {p["player"]: p["new_since_last_game"] for p in game["away"]["players"]}
+        # 客队最后一场 11-10：A 在 11-11 首次列出且之前没有快照 → 无法判断；B、C 的上一份在 11-11 还没列出 → 新伤病。
+        self.assertEqual(flags, {"A": None, "B": True, "C": True})
+        self.assertEqual((context["stale"], game["home"]), (False, {"team": "Toronto Raptors", "listed": False, "last_game": "2026-11-12", "players": []}))
+        self.assertTrue(self.injuries.injury_context(record, self.events, later_time + timedelta(hours=13))["stale"])
         self.assertEqual(self.injuries.injury_context(None, self.events)["status"], "unavailable")
+
+    def test_new_since_last_game_boundaries(self):
+        new_since = self.injuries.new_since
+        player = {"listed_since": "2026-11-13T12:00:00Z", "listed_after": "2026-11-11T12:00:00Z"}
+        self.assertTrue(new_since(player, "2026-11-10"))
+        self.assertIsNone(new_since(player, "2026-11-11"))  # 上一份与最后一场同一天：不知道在赛前还是赛后
+        self.assertIsNone(new_since(player, "2026-11-12"))  # 最后一场落在两份快照之间
+        self.assertFalse(new_since(player, "2026-11-14"))
+        self.assertIsNone(new_since(player, None))
+
+    def test_espn_record_is_not_used_for_listing_time(self):
+        old = {"provider": "ESPN", "fetched_at": "2026-11-10T00:00:00Z", "teams": {"Boston Celtics": [{"player": "A", "status": "Out"}]}}
+        teams = {"Boston Celtics": [{"player_id": "1", "player": "A", "status": "Out"}]}
+        self.injuries.carry_listing(teams, old, "2026-11-14T00:00:00Z")
+        self.assertEqual((teams["Boston Celtics"][0]["listed_since"], teams["Boston Celtics"][0]["listed_after"]), ("2026-11-14T00:00:00Z", None))
 
     def test_corrupted_latest_does_not_fallback(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -191,23 +230,6 @@ class InjuryTests(unittest.TestCase):
             (root / "20260102").mkdir()
             (root / "20260102" / "injuries.json").write_text("{broken")
             self.assertIsNone(self.injuries.load_injuries(root))
-
-    def test_fetch_errors_do_not_retry(self):
-        import httpx
-        espn = self.injuries.espn
-        calls = []
-        real = httpx.Client
-
-        def client(handler):
-            return lambda **kw: real(transport=httpx.MockTransport(handler), **kw)
-
-        with patch.object(espn.httpx, "Client", client(lambda r: httpx.Response(200, json={"injuries": [espn_team("Boston Celtics")]}))):
-            self.assertEqual(espn.fetch_injuries()[0]["displayName"], "Boston Celtics")
-        for response in (httpx.Response(503), httpx.Response(200, json={"items": []}), httpx.Response(200, text="<html>")):
-            with patch.object(espn.httpx, "Client", client(lambda r, resp=response: calls.append(1) or resp)):
-                with self.assertRaises(espn.InjuryError):
-                    espn.fetch_injuries()
-        self.assertEqual(len(calls), 3)
 
 if __name__ == '__main__':
     unittest.main()
@@ -247,6 +269,7 @@ class ScheduleTests(unittest.TestCase):
     def setUp(self):
         from app.services.odds import schedule
         self.schedule = schedule
+        schedule.balldontlie._recent.clear()  # 限速计数是进程级的，避免前面的测试让这里等待
         self.events = board.build_board(snapshot(), datetime(2026, 11, 12, tzinfo=timezone.utc)).events  # 东部日期 2026-11-11
 
     def test_normalize_maps_abbreviations_and_skips_postponed(self):

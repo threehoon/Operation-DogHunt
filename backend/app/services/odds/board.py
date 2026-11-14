@@ -10,7 +10,7 @@ from time import monotonic
 
 from app.integrations.odds import PROJECT_ROOT, odds_tool
 from app.schemas.odds import OddsBoard, OddsBookmaker, OddsEvent, OddsMarket, OddsOutcome
-from app.services.odds import injuries, schedule
+from app.services.odds import injuries, schedule, season, team_stats
 
 SNAPSHOT_ROOT = PROJECT_ROOT / "data" / "odds"
 STALE_SECONDS = 15 * 60
@@ -138,9 +138,10 @@ def refresh_board() -> OddsBoard:
 
 
 def start_extras(events: list[OddsEvent]) -> Thread | None:
-    """赛程与比分（BALLDONTLIE，最多 4 页）和伤病（ESPN，常要 5 到 15 秒）合计可能超过前端更新的 25 秒超时，所以不等它们。
+    """赛程与比分（BALLDONTLIE，最多 4 页）、伤病（DunkAPI，约 4 小时最多一次）、球队效率（DunkAPI，约 20 小时最多一次）
+    和整季比分（BALLDONTLIE，约 6 小时最多一次，首次全季翻页受每分钟 5 次限制可能要几分钟）合计远超前端更新的 25 秒超时，所以不等它们。
 
-    上一轮还没结束时跳过本次，避免重复请求触发 BALLDONTLIE 每分钟 5 次的限制。返回线程只为测试等待。
+    上一轮还没结束时跳过本次，避免重复请求触发 BALLDONTLIE 每分钟 5 次的限制。整季比分最慢，放在最后。返回线程只为测试等待。
     """
     if not _extras_lock.acquire(blocking=False):
         logger.info("上一轮赛程与伤病更新还没结束，本次跳过")
@@ -150,6 +151,8 @@ def start_extras(events: list[OddsEvent]) -> Thread | None:
         try:
             schedule.log_refresh(events)
             injuries.log_refresh(events)
+            team_stats.log_refresh()
+            season.log_refresh()
         finally:
             _extras_lock.release()
 

@@ -126,12 +126,26 @@ service.load_injuries = lambda: None   # 不读本机真实伤病；E-010、E-01
 - 快照：S-001；赛程比分和伤病用 D-001，试跑时 `service.load_schedule = lambda: D["schedule"]`、`service.load_injuries = lambda: D["injuries"]`
 - 前置：选定湖人 @ 掘金、DraftKings（S-001 的 selection）
 - 问题：分析这场
-- 期望：战绩一行写出掘金 +6.0（9 场）、湖人 -1.0（10 场），推算掘金赢约 9，和共识 6.75 差约 2，写成与市场一致、不作为选边理由；伤病一行写 Lakers Guard A 缺阵（新伤病，指向掘金），注明 ESPN、采集时间和可能滞后，Lakers Center B 写成本季一直缺阵、已在战绩里、不重复计算，Nuggets Wing C 只算出场待定；让分倾向掘金，把握“中”，说明新伤病和休息差盘口通常已计入，所以不是“高”；大小分推算总分约 234、与共识 231 差 3 分，写成一致，把握“低”，如果用伤病解释大小分要写明理由；资料列写出 BALLDONTLIE、ESPN、DraftKings 等具体来源，不只写字母；不凭记忆评价这几名虚构球员
-- 来源：I-005（接入近期战绩和伤病后，依据要有数字和来源）
+- 期望：战绩一行写出掘金 +6.0（9 场）、湖人 -1.0（10 场），推算掘金赢约 9，和共识 6.75 差约 2，写成与市场一致、不作为选边理由；伤病一行写 Lakers Guard A 缺阵（new_since_last_game 为 true，新伤病，指向掘金），注明 DunkAPI、采集时间和可能滞后，Lakers Center B 写成最后一场之前已列出、已在战绩里、不重复计算，Nuggets Wing C 只算出场待定；让分倾向掘金，把握“中”，说明新伤病和休息差盘口通常已计入，所以不是“高”；大小分推算总分约 234、与共识 231 差 3 分，写成一致，把握“低”，如果用伤病解释大小分要写明理由；资料列写出 BALLDONTLIE、DunkAPI、DraftKings 等具体来源，不只写字母；不凭记忆评价这几名虚构球员
+- 来源：I-005（接入近期战绩和伤病后，依据要有数字和来源）、I-007（伤病换成 DunkAPI）
 
 ## E-011｜odds、sources
 - 快照：S-001；D-001 同 E-010
 - 前置：选定湖人 @ 掘金、DraftKings
 - 问题：Lakers Guard A 今天打不打？掘金那边有人缺阵吗
-- 期望：Guard A 按 ESPN 写“缺阵”，附报告时间和 ESPN 采集时间（北京时间），说明非官方、可能滞后，建议开赛前看球队官方报告；掘金写 Nuggets Wing C 出场待定，不说成缺阵；不加入 D-001 里没有的球员
-- 来源：I-005
+- 期望：Guard A 按 DunkAPI 写“缺阵”，附报告日期和采集时间（北京时间），说明可能滞后，建议开赛前看球队官方报告；不编造伤情短评或球员作用；掘金写 Nuggets Wing C 出场待定，不说成缺阵；不加入 D-001 里没有的球员
+- 来源：I-005、I-007
+
+## E-012｜核心｜odds、method、sources
+- 快照：S-001；赛程比分和伤病用 D-001（同 E-010）；整季实力分和球队效率用试跑当天真实保存的 `data/season/`、`data/team_stats/`，或试跑脚本里替换 `service.load_season`、`service.load_team_stats` 为固定记录
+- 前置：选定湖人 @ 掘金、DraftKings（S-001 的 selection）
+- 问题：分析这场
+- 期望：实力一行写明用的是 season_strength 的 model_home_margin（整季实力分，估算）并写出两队 rating 与 home_edge，没有时才退回 team_form 并说明；大小分一行用 team_efficiency 的 projection.total（估算）并写出预计回合数，没有时才退回 avg_game_total；资料列写出 BALLDONTLIE、DunkAPI 和采集时间；不把赛季累计效率说成近期状态，不用它判断新伤病影响
+- 来源：I-006
+
+## E-013｜odds、output
+- 快照：试跑当天真实保存的盘口与赛程、伤病、整季比分、球队效率（需要 2 场以上已开盘比赛）
+- 前置：先选定任意一场问“分析这场”，回答后取消选场
+- 问题：别的比赛场次你看不到吗？分析全部的
+- 期望：列出快照里全部已开盘比赛，每场一行写两个玩法的倾向、把握和一句原因（chat_output 多场写法），原因引用该场的资料而不只是报价；不说“只能看到一场”；details_limit 非空时，未覆盖的比赛写“资料未载入”
+- 来源：I-008

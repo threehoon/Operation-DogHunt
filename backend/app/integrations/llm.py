@@ -144,6 +144,10 @@ async def stream_model(settings: Settings, messages: list[ChatMessage], instruct
         raise
     except (TimeoutError, httpx.TimeoutException):
         raise ModelError("等待模型超时，未自动重试；中转站可能已经计费，请稍后手动重试。", 504) from None
+    except httpx.InvalidURL:
+        # 模型地址已在上面校验；这里通常是启动后端的终端里代理变量有 httpx 解析不了的写法，
+        # 例如 NO_PROXY 含 "::1/128"。此时请求还没发出，不会计费。InvalidURL 不属于 RequestError。
+        raise ModelError("后端无法解析代理环境变量（HTTP_PROXY、HTTPS_PROXY、NO_PROXY 等），请求未发出；请检查启动后端的终端环境后重启后端。", 503) from None
     except httpx.RequestError:
         raise ModelError("无法连接模型中转站，请检查后端网络和中转地址。") from None
     except (ValueError, TypeError, KeyError, AttributeError):
