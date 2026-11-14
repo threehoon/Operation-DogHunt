@@ -1,0 +1,4 @@
+interface:
+  display_name: "文件夹管理"
+  short_description: "新建文件时决定放哪；目录过挤时提出分组方案，确认后移动并同步引用、测试和文档"
+  default_prompt: "请用 $folder-organization 扫描项目目录，找出平铺过多或混放的目录，给出整理方案，等我确认后再移动。"
