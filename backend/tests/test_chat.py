@@ -19,7 +19,7 @@ from app.schemas.chat import ChatMessage, ChatResponse, OddsSelection
 from app.schemas.odds import OddsBoard
 from app.services.chat import prompt as chat_prompt
 from app.services.chat.context.payload import odds_context
-from app.services.chat.context.teams import focus_teams, mentioned_teams
+from app.services.chat.context.teams import find_focus, focus_teams, mentioned_players, mentioned_teams
 from app.services.odds.board import build_board
 from test_odds import snapshot
 
@@ -364,6 +364,51 @@ class FocusTests(unittest.TestCase):
         self.assertEqual(mentioned_teams("尼克斯 @ 步行者"), {"New York Knicks", "Indiana Pacers"})
         self.assertEqual(mentioned_teams("Knicks vs PACERS"), {"New York Knicks", "Indiana Pacers"})
         self.assertEqual(mentioned_teams("they cheat at magician school"), set())
+
+    def test_abbreviations_and_short_names(self):
+        self.assertEqual(mentioned_teams("LAL vs DEN"), {"Los Angeles Lakers", "Denver Nuggets"})
+        self.assertEqual(mentioned_teams("GS @ NY"), {"Golden State Warriors", "New York Knicks"})
+        self.assertEqual(mentioned_teams("凯尔特今晚"), {"Boston Celtics"})
+        self.assertEqual(mentioned_teams("绿凯"), {"Boston Celtics"})
+        # 缩写只认大写整词：小写的 was、min、den 是普通英文。
+        self.assertEqual(mentioned_teams("what was the min line in den"), set())
+        self.assertEqual(mentioned_teams("LALDEN"), set())
+
+    def test_phrases_that_are_not_teams(self):
+        self.assertEqual(mentioned_teams("魔术师约翰逊"), set())
+        self.assertEqual(mentioned_teams("气氛热火朝天"), set())
+        self.assertEqual(mentioned_teams("the heat is on"), set())
+        self.assertEqual(mentioned_teams("Heat vs Magic"), {"Miami Heat", "Orlando Magic"})
+        self.assertEqual(mentioned_teams("魔术师约翰逊和湖人"), {"Los Angeles Lakers"})
+
+    def test_player_names_from_star_table_and_injury_list(self):
+        injuries = {"teams": {"Atlanta Hawks": [{"player": "Asa Newell"}], "Brooklyn Nets": [{"player": "Nikola Jokić"}]}}
+        self.assertEqual(find_focus([ChatMessage(role="user", content="约基奇今天打吗")]).teams, {"Denver Nuggets"})
+        self.assertEqual(mentioned_players("斯科蒂·巴恩斯"), {"斯科蒂巴恩斯": "Toronto Raptors"})
+        self.assertEqual(mentioned_players("newell 能打吗", injuries), {"Asa Newell": "Atlanta Hawks"})
+        # 伤病名单里有同名球员时以伤病名单的球队为准（这里故意写成篮网）。
+        self.assertEqual(mentioned_players("约基奇", injuries), {"约基奇": "Brooklyn Nets"})
+        self.assertEqual(set(mentioned_players("Jokic 状态", injuries).values()), {"Brooklyn Nets"})
+        # 常用词姓不单独认。
+        self.assertEqual(mentioned_players("green 呢", {"teams": {"Golden State Warriors": [{"player": "Draymond Green"}]}}), {})
+
+    def test_unknown_player_gives_whole_board_with_note(self):
+        board = build_board(snapshot())
+        context = json.loads(odds_context(board, None, [ChatMessage(role="user", content="张三今天打吗")]))
+        self.assertIsNone(context["focus"])
+        self.assertEqual(len(context["events"]), len(board.events))
+        self.assertIn("没认出", context["focus_note"])
+        named = json.loads(odds_context(board, None, [ChatMessage(role="user", content="斯科蒂巴恩斯今天打吗")]))
+        self.assertEqual(named["focus"]["players"], {"斯科蒂巴恩斯": "Toronto Raptors"})
+        self.assertIsNone(named["focus_note"])
+        self.assertIsNone(json.loads(odds_context(board, None, [ChatMessage(role="user", content="今天有什么比赛")]))["focus_note"])
+
+    def test_time_words_without_team_reset_follow_up(self):
+        named, answer = ChatMessage(role="user", content="湖人怎么看"), ChatMessage(role="assistant", content="略")
+        for wide in ("分析一下今晚", "今天怎么看", "明天呢"):
+            self.assertEqual(find_focus([named, answer, ChatMessage(role="user", content=wide)]).reason, "time", wide)
+        self.assertEqual(focus_teams([named, answer, ChatMessage(role="user", content="那大小分呢")]), {"Los Angeles Lakers"})
+        self.assertEqual(focus_teams([named, answer, ChatMessage(role="user", content="湖人今晚呢")]), {"Los Angeles Lakers"})
 
     def test_follow_up_keeps_previous_team_and_unknown_team_gives_empty_list(self):
         board = build_board(snapshot())

@@ -5,7 +5,7 @@ import json
 from app.integrations.llm import ModelError
 from app.schemas.chat import ChatMessage, OddsSelection
 from app.schemas.odds import OddsBoard
-from app.services.chat.context.teams import focus_teams
+from app.services.chat.context.teams import Focus, find_focus
 from app.services.odds.injuries import injury_context
 from app.services.odds.schedule import rest_context
 from app.services.odds.season import strength_context
@@ -17,6 +17,9 @@ from app.services.odds.team_stats import efficiency_context
 # 让“分析全部”也有资料；快照跨好几天时只覆盖最早的这些场，用 details_limit 说明，避免输入过长。
 # 每场这些资料约 4.7 千字，加上 8 家平台报价约 8 千字；15 场约 12 万字。
 DETAIL_EVENT_LIMIT = 15
+# 未选场、也没认出球队或球员时附带的说明（含“张三今天打吗”这类带时间词的句子）；问全部、问多场时不附带。
+UNRECOGNIZED_NOTE = ("没从用户最近的提问里认出球队或球员（球员只认伤病名单和常用球星表），下面是整张表；"
+                     "如果用户问的是某位球员，先说明没认出，请用户补充球队。")
 
 
 def odds_context(board: OddsBoard, selection: OddsSelection | None, messages: list[ChatMessage] | None = None,
@@ -25,10 +28,13 @@ def odds_context(board: OddsBoard, selection: OddsSelection | None, messages: li
     """schedule、injuries、season、team_stats 是对应 load_* 的结果，None 表示没有可用资料。"""
     events = board.events
     focus = None
-    if not selection and messages and (teams := focus_teams(messages)):
+    found = find_focus(messages, injuries) if not selection and messages else Focus(reason="selected")
+    if teams := found.teams:
         # 未选场但问到具体球队时只给相关比赛，减少输入；找不到时给空列表并说明，不回退到整张表。
         matched = [event for event in events if {event.home_team, event.away_team} & teams]
         focus = {"teams": sorted(teams), "matched_events": len(matched), "total_events": len(events)}
+        if found.players:
+            focus["players"] = found.players
         events = matched
     if selection:
         event = next((event for event in events if event.id == selection.event_id), None)
@@ -56,6 +62,7 @@ def odds_context(board: OddsBoard, selection: OddsSelection | None, messages: li
         "message": board.message,
         "selection": selection.model_dump() if selection else None,
         "focus": focus,
+        "focus_note": UNRECOGNIZED_NOTE if found.reason in ("none", "time") and messages else None,
         "events": [event.model_dump() for event in events],
         "details_limit": limit,
         "market_signals": signals,
