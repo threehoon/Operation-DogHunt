@@ -1,0 +1,4 @@
+interface:
+  display_name: "API 地址维护"
+  short_description: "修改接口地址、路由或代理配置时，同步项目 API 清单与配置位置说明"
+  default_prompt: "使用 $api-address-maintenance 核对本次 API 地址变更并同步 docs/api/ 文档。"

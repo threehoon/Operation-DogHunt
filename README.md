@@ -4,6 +4,8 @@
 
 Vue 负责页面；TypeScript 帮忙提前检查代码中的常见错误；Vite 负责启动开发页面和打包；Vue Router 负责页面之间的切换；FastAPI 负责后台接口。
 
+项目用到的外部 API、后端接口、配置位置和地址变更维护方式，统一见 [API 地址清单](docs/api/README.md)。修改接口地址后使用 `$api-address-maintenance` 同步。
+
 ## 当前可以做什么
 
 当前配置：使用用户填写的项目独立 Key、`https://relay.example` 与 `gpt-6.1-sol`，真实网站后端已返回“项目模型连接成功。”。修改 `backend/.env` 后需重新加载后端；不读取或导入其他应用凭证。
