@@ -15,6 +15,11 @@
         "--strictPort"
       ],
       "port": 5174
+    },
+    {
+      "name": "running-5173",
+      "url": "http://localhost:5173",
+      "port": 5173
     }
   ]
 }
