@@ -292,6 +292,34 @@ class ReaderTests(unittest.TestCase):
         detail = reader.get_trace("aaaaaaaaaaaa", root=folder, archive_root=folder, today=today)
         self.assertEqual([c["trace_id"] for c in detail["children"]], ["task-bbbbbbbbbbbb"])
         self.assertIsNone(reader.get_trace("../../etc", root=folder, today=today))
+        # 结尾带换行的编号以前能通过 match 加 $ 的校验
+        self.assertIsNone(reader.get_trace("aaaaaaaaaaaa\n", root=folder, today=today))
+        self.assertIsNone(reader.read_archive("aaaaaaaaaaaa\n", root=folder))
+
+    def test_running_chat_is_listed_as_chat(self):
+        # 流式回答传完之前还没有 http.request 这一条
+        folder = Path(tempfile.mkdtemp()) / "logs"
+        self.write(folder, "2026-11-15", [
+            {"ts": "2026-11-15T10:00:00.000+08:00", "level": "INFO", "trace_id": "eeeeeeeeeeee", "event": "chat.context", "msg": ""},
+            {"ts": "2026-11-15T10:00:01.000+08:00", "level": "INFO", "trace_id": "eeeeeeeeeeee", "event": "llm.start", "msg": ""},
+        ])
+        listing = reader.list_traces(days=1, kind="chat", root=folder, today=date(2026, 11, 15))
+        self.assertEqual([(s["trace_id"], s["status"]) for s in listing["items"]], [("eeeeeeeeeeee", "running")])
+
+    def test_detail_stops_reading_older_days_once_found(self):
+        folder = Path(tempfile.mkdtemp()) / "logs"
+        row = lambda tid, ts: {"ts": ts, "level": "INFO", "trace_id": tid, "event": "chat.context", "msg": ""}
+        # 调用跨过午夜：前一天开始，当天结束；再往前两天的文件与它无关
+        self.write(folder, "2026-11-15", [row("ffffffffffff", "2026-11-15T00:00:01.000+08:00")])
+        self.write(folder, "2026-11-14", [row("ffffffffffff", "2026-11-14T23:59:59.000+08:00")])
+        self.write(folder, "2026-11-13", [row("111111111111", "2026-11-13T10:00:00.000+08:00")])
+        self.write(folder, "2026-11-12", [row("222222222222", "2026-11-12T10:00:00.000+08:00")])
+        read = []
+        original = reader._read_file
+        with patch.object(reader, "_read_file", side_effect=lambda path: read.append(path.name) or original(path)):
+            detail = reader.get_trace("ffffffffffff", root=folder, archive_root=folder, today=date(2026, 11, 15))
+        self.assertEqual(detail["summary"]["steps"], 2)
+        self.assertEqual(read, ["app-2026-11-15.jsonl", "app-2026-11-14.jsonl", "app-2026-11-13.jsonl"])
 
 
 if __name__ == "__main__":

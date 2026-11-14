@@ -18,6 +18,7 @@ from app.main import create_app
 from app.schemas.chat import ChatMessage, ChatResponse, OddsSelection
 from app.schemas.odds import OddsBoard
 from app.services.chat import prompt as chat_prompt
+from app.services.chat import service
 from app.services.chat.context.payload import odds_context
 from app.services.chat.context.teams import find_focus, focus_teams, mentioned_players, mentioned_teams
 from app.services.odds.board import build_board
@@ -358,6 +359,40 @@ class StreamTests(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn("test-secret", response.text)
             self.assertNotIn("test-secret", "\n".join(logs.output))
             self.assertEqual((await self.client.post("/api/v1/chat/stream", json=payload)).status_code, 200)
+
+    async def test_disconnect_while_sending_still_archives_and_releases_lock(self):
+        # 网页恰好在 Starlette 发送一段时断开：取消落在 send 里，事件生成器停在 yield 处。
+        # 以前生成器要等垃圾回收才关，存档拿不到调用编号被跳过，模型锁也一直占着。
+        async def provider(*_):
+            yield TextDelta("半截")
+            yield ChatResponse(reply="半截", model="test-model")
+
+        body = json.dumps({"messages": [{"role": "user", "content": "测试"}]}).encode()
+        sent_body = asyncio.Event()
+        requests = [{"type": "http.request", "body": body, "more_body": False}]
+
+        async def receive():
+            if requests:
+                return requests.pop()
+            await sent_body.wait()
+            return {"type": "http.disconnect"}
+
+        async def send(message):
+            if message["type"] == "http.response.body" and message.get("body"):
+                sent_body.set()
+                await asyncio.Event().wait()  # 发送卡住，直到被断开取消
+
+        scope = {"type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1", "method": "POST", "scheme": "http",
+                 "path": "/api/v1/chat/stream", "raw_path": b"/api/v1/chat/stream", "query_string": b"", "root_path": "",
+                 "headers": [(b"host", b"test"), (b"content-type", b"application/json")], "client": ("127.0.0.1", 1), "server": ("test", 80)}
+        with patch("app.services.chat.service.stream_model", side_effect=provider), \
+                patch("app.core.applog.save_archive") as archive:
+            await asyncio.wait_for(self.app(scope, receive, send), 5)
+            self.assertFalse(service.busy())
+        archive.assert_called_once()
+        trace_id, record = archive.call_args.args
+        self.assertRegex(trace_id or "", r"^[0-9a-f]{12}$")
+        self.assertEqual(record["outcome"], "disconnected")
 
     async def test_errors_before_start_use_http_status(self):
         with patch("app.services.chat.service.stream_model") as call:

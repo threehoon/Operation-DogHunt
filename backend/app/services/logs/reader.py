@@ -47,13 +47,38 @@ def load_entries(days: int, root: Path | None = None, today: date | None = None)
     return entries
 
 
-def _kind(trace_id: str, path: str | None) -> str:
+def _entries_around(trace_id: str, root: Path | None = None, today: date | None = None) -> list[dict]:
+    """从今天往前逐天读，找到这次调用以后，再往前一天没有它就停，不用每次读满 MAX_DAYS 天。
+    它触发的后台任务总在它之后，已经在更新的文件里读到了；编号不存在时才会读满。"""
+    root = root or applog.log_dir()
+    today = today or _today()
+    entries: list[dict] = []
+    found = False
+    for offset in range(MAX_DAYS):
+        path = root / f"app-{(today - timedelta(days=offset)).isoformat()}.jsonl"
+        day = _read_file(path) if path.exists() else []
+        here = any(e.get("trace_id") == trace_id for e in day)
+        if found and not here:
+            break
+        found = found or here
+        entries.extend(day)
+    return entries
+
+
+def _kind(trace_id: str, path: str | None, entries: list[dict]) -> str:
     if trace_id.startswith("task-"):
         return "task"
     if path and path.startswith("/api/v1/chat"):
         return "chat"
     if path == "/api/v1/odds/refresh":
         return "odds_refresh"
+    if path is None:
+        # 还没传完的请求没有 http.request 这一条，按已写下的步骤认类型，免得进行中的聊天被“聊天”筛选漏掉。
+        names = [e.get("event") or "" for e in entries]
+        if any(name.startswith(("chat.", "llm.")) for name in names):
+            return "chat"
+        if any(name.startswith("odds.") for name in names):
+            return "odds_refresh"
     return "api"
 
 
@@ -64,7 +89,7 @@ def summarize(trace_id: str, entries: list[dict]) -> dict:
     end = next((e for e in entries if e.get("event") == "task.end"), None)
     http_data = (http or {}).get("data") or {}
     path = http_data.get("path")
-    kind = _kind(trace_id, path)
+    kind = _kind(trace_id, path, entries)
     warnings = sum(e.get("level") == "WARNING" and e is not http for e in entries)
     errors = sum(e.get("level") in {"ERROR", "CRITICAL"} and e is not http for e in entries)
     status_code = http_data.get("status")
@@ -121,7 +146,7 @@ def list_traces(days: int = 1, kind: str | None = None, problems_only: bool = Fa
 
 
 def read_archive(trace_id: str, root: Path | None = None) -> dict | None:
-    if not applog.TRACE_ID.match(trace_id):
+    if not applog.TRACE_ID.fullmatch(trace_id):
         return None
     path = (root or applog.trace_dir()) / f"{trace_id}.json"
     try:
@@ -133,9 +158,9 @@ def read_archive(trace_id: str, root: Path | None = None) -> dict | None:
 
 def get_trace(trace_id: str, root: Path | None = None, archive_root: Path | None = None, today: date | None = None) -> dict | None:
     """一次调用的全部日志，加上它触发的后台任务概要和聊天存档；编号格式不对或找不到时返回 None。"""
-    if not applog.TRACE_ID.match(trace_id):
+    if not applog.TRACE_ID.fullmatch(trace_id):
         return None
-    groups = _group(load_entries(MAX_DAYS, root, today))
+    groups = _group(_entries_around(trace_id, root, today))
     entries = groups.get(trace_id)
     if not entries:
         return None

@@ -25,7 +25,8 @@ KEEP_DAYS = 14
 KEEP_TRACES = 200
 BEIJING = timezone(timedelta(hours=8))
 FILE_PATTERN = re.compile(r"^app-(\d{4}-\d{2}-\d{2})\.jsonl$")
-TRACE_ID = re.compile(r"^(task-)?[0-9a-f]{12}$")
+# 用 fullmatch 校验：match 加 $ 会放过结尾带换行的编号。
+TRACE_ID = re.compile(r"(task-)?[0-9a-f]{12}")
 # 这些错误类的提示是本项目自己写的，不含密钥，可以记录原文；其他异常只记类型和位置。
 SAFE_ERRORS = {"ModelError", "DunkError", "ScheduleError", "FetchError", "OddsRefreshError", "ChatPromptError"}
 
@@ -294,7 +295,7 @@ def trace_dir() -> Path:
 def save_archive(trace_id: str | None, record: dict, keep: int = KEEP_TRACES) -> None:
     """保存一次聊天的完整输入与回答；没有开始写文件时不存。超过 keep 个时删掉最旧的。失败只记日志。"""
     folder = _state.trace_dir
-    if folder is None or trace_id is None or not TRACE_ID.match(trace_id):
+    if folder is None or trace_id is None or not TRACE_ID.fullmatch(trace_id):
         return
     try:
         folder.mkdir(parents=True, exist_ok=True)

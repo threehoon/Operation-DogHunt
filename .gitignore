@@ -26,6 +26,8 @@ dist/
 htmlcov/
 data/app/
 *.log
+# 根目录的后端终端输出文件，不提交
+backend_log.txt
 
 # 本机 API 地址记录（不含 Key，仍避免公开私人中转地址）
 docs/api/local-addresses.local.md

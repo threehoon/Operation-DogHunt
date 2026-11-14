@@ -27,7 +27,7 @@
 | [applog.py](../../backend/app/core/applog.py) | `trace`、`new_trace_id`、`event`、`run_step`、`redact`、`register_secret`、`save_archive` | 编号上下文、事件记录、脱敏、聊天存档 |
 | 同一文件 | `DailyJsonHandler`、`configure_console`、`configure_files`、`shutdown_files` | 控制台和按天文件输出 |
 | [trace_middleware.py](../../backend/app/core/trace_middleware.py) | `TraceMiddleware` | 每个 HTTP 请求生成编号，加 `x-trace-id` 响应头，记 `http.request` |
-| [reader.py](../../backend/app/services/logs/reader.py) | `load_entries`、`summarize`、`list_traces`、`get_trace`、`read_archive` | 读取日志并按编号归组 |
+| [reader.py](../../backend/app/services/logs/reader.py) | `load_entries`、`_entries_around`、`summarize`、`list_traces`、`get_trace`、`read_archive` | 读取日志并按编号归组 |
 | [routes/logs.py](../../backend/app/api/routes/logs.py) | `GET /logs/traces`、`GET /logs/traces/{trace_id}`、`local_only` | 查询接口，只允许本机 |
 | [_isolation.py](../../backend/tests/_isolation.py) / [test_logs.py](../../backend/tests/test_logs.py) | 临时日志目录 / 18 项 | 测试不写真实日志目录 |
 | [client.ts](../../frontend/src/api/client.ts) | `TraceError`、`traceOf`、`traceHeader` | 前端请求失败时带上编号 |
@@ -71,7 +71,10 @@
 - 只允许 127.0.0.1、::1、localhost 访问，否则返回 403。
 - `GET /api/v1/logs/traces`：参数 days 1–14（默认 1）、kind（chat、odds_refresh、task、api）、problems_only、q（不超过 100 字）、cursor（从 0 起）、limit 1–200（默认 50）。
 - `GET /api/v1/logs/traces/{trace_id}`：返回 summary、entries、children（后台子任务）、archive；找不到时返回 404“…日志只保留 14 天”。
-- 读取在线程里进行。单个日志文件超过 20MB 时只读最后一段，丢掉被截断的首行，坏行跳过。
+- 读取在线程里进行。单个日志文件超过 20MB 时只读最后一段，丢掉被截断的首行，坏行跳过。写入端不限当天文件大小。
+- 调用编号用 `TRACE_ID.fullmatch` 校验（`(task-)?` 加 12 位十六进制），结尾带换行也不通过。
+- 详情由 `_entries_around` 从今天往前逐天读：找到这次调用后，再往前一天没有它就停；后台子任务总在父调用之后，已在更新的文件里。编号不存在时才读满 14 天。
+- 类型：没有 `http.request` 的进行中请求按已写下的步骤认，有 `chat.*` 或 `llm.*` 算聊天，有 `odds.*` 算更新盘口，所以“聊天”筛选能看到还没传完的聊天。
 - 每条记录的状态为 running、error、warning 或 ok，附一句标题。
 
 ## 前端查看页
@@ -105,8 +108,9 @@
 
 | 日期 | 方式或命令 | 实际结果与边界 |
 | --- | --- | --- |
-| 2026-11-15 | `cd backend && uv run --locked python -m unittest discover -s tests` | 本轮运行：172 项通过，其中 test_logs 18 项（含存档的 `analysis_cards` 和 `chat.context` 的 analysis_ms） |
+| 2026-11-15 | `cd backend && uv run --locked python -m unittest discover -s tests` | 本轮运行：175 项通过，其中 test_logs 20 项（含存档的 `analysis_cards` 和 `chat.context` 的 analysis_ms、带换行的编号被拒、进行中聊天归为 chat、详情读到不含该编号的前一天就停） |
 | 2026-11-15 | 日志功能上线时的真实聊天 | 历史记录：当时 126 项测试通过；trace `5692be868234` 组装资料 35ms、首字 8.3s、总用时 10.3s，输入 19564、输出 287 token，存档 67KB；检查日志和存档，未发现密钥 |
+| 2026-11-15 | 正在运行的后端 8000（`--reload`） | 本轮运行：`/logs/traces/3b96855dead9%0A` 返回 404；同一编号不带换行时返回聊天详情（6 条记录、有存档）；当天 chat 类 3 条 |
 | 2026-11-15 | 前端 `vue-tsc` 与 `vite build`，预览端口 5174 | 历史记录：292 个模块构建通过，页面读到 16 条记录；本轮未重跑 |
 
 相关记录：[执行方案](../plans/2026-11-15-调用日志与查看页执行方案.md)、[交接](../handoff/2026-11-15-调用日志与查看页.md)。
@@ -124,3 +128,4 @@
 
 - 2026-11-15：调用日志与查看页上线，包括调用编号、结构化日志、聊天存档和 `/logs` 页面（提交 42ffc82）。
 - 2026-11-15：聊天加分析卡后，存档增加 `analysis_cards`，`chat.context` 增加 analysis 统计；日志页可以显示分析卡。
+- 2026-11-15：推送前审查后修正：编号改用 fullmatch，进行中的聊天按步骤归类，详情找到后不再读满 14 天；`backend_log.txt` 加进 `.gitignore`。

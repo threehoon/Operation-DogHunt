@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 from collections.abc import AsyncIterator
+from contextlib import aclosing
 from datetime import datetime, timedelta, timezone
 from time import monotonic
 
@@ -136,13 +137,15 @@ async def prepare_stream(request: ChatRequest, settings: Settings) -> AsyncItera
             try:
                 if analysis:
                     yield _sse("analysis", {"cards": list(analysis.values())})
-                async for item in stream_model(settings, request.messages, instructions):
-                    if isinstance(item, TextDelta):
-                        parts.append(item.text)
-                        yield _sse("delta", {"text": item.text})
-                    else:
-                        outcome, reply = "done", item
-                        yield _sse("done", item.model_dump())
+                # 显式关闭模型流：网页断开时外层生成器被关闭，里面的模型连接也随之在本次请求内关掉。
+                async with aclosing(stream_model(settings, request.messages, instructions)) as items:
+                    async for item in items:
+                        if isinstance(item, TextDelta):
+                            parts.append(item.text)
+                            yield _sse("delta", {"text": item.text})
+                        else:
+                            outcome, reply = "done", item
+                            yield _sse("done", item.model_dump())
             except ModelError as exc:
                 outcome, error = "error", str(exc)
                 yield _sse("error", {"detail": str(exc), "status": exc.status_code})

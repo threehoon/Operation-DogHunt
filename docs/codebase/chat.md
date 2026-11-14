@@ -23,7 +23,7 @@
 
 | 源码或配置 | 入口或关键符号 | 用途 |
 | --- | --- | --- |
-| [routes/chat.py](../../backend/app/api/routes/chat.py) | `POST /chat`、`POST /chat/stream` | 普通回复和流式回复；`_rejected` 记 `chat.rejected` |
+| [routes/chat.py](../../backend/app/api/routes/chat.py) | `POST /chat`、`POST /chat/stream`、`ClosingStreamingResponse` | 普通回复和流式回复；`_rejected` 记 `chat.rejected`；断开时在请求内关闭事件流 |
 | [service.py](../../backend/app/services/chat/service.py) | `_inflight`、`busy`、`_build`、`chat`、`prepare_stream`、`_finish` | 并发限制、组装资料、调用模型、发事件、写存档 |
 | [context/payload.py](../../backend/app/services/chat/context/payload.py) | `build_payload`、`odds_context`、`_trim`、`DETAIL_EVENT_LIMIT` | 选比赛、裁剪报价、拼各来源段落、调用分析卡 |
 | [context/teams.py](../../backend/app/services/chat/context/teams.py) | `find_focus`、`Focus`、`TEAM_ALIASES`、`TEAM_ABBR`、`STAR_PLAYERS` | 从问题里认球队、缩写和球员，决定看哪几场 |
@@ -35,7 +35,7 @@
 | [factors.py](../../backend/app/services/match_analysis/factors.py) | `strength`、`pace`、`rest`、`injury`、`movement`、`price` | 各项依据和阈值 |
 | [lean.py](../../backend/app/services/match_analysis/lean.py) | `pick_side`、`confidence`、`expected_range`、`build_lean` | 选边、信心、预计范围 |
 | [cache.py](../../backend/app/services/match_analysis/cache.py) | `MAX_CARDS`、`clear` | 进程内分析卡缓存 |
-| [test_chat.py](../../backend/tests/test_chat.py) / [test_match_analysis.py](../../backend/tests/test_match_analysis.py) | 41 项 / 40 项 | 离线测试 |
+| [test_chat.py](../../backend/tests/test_chat.py) / [test_match_analysis.py](../../backend/tests/test_match_analysis.py) | 42 项 / 40 项 | 离线测试 |
 
 ## 输入、输出和依赖
 
@@ -55,6 +55,8 @@
    - `done`：`ChatResponse` 全部字段。
    - 出错时发 `error`，内容为 `{detail, status}`。ModelError 用原状态码；其他异常记 `chat.crash`（只记类型），状态 500。进入事件流后再次发现忙碌也发 `error`，状态 429。
 5. `finally` 调 `_finish`：记 `chat.end`（outcome 为 done、error 或 disconnected，默认 disconnected；reply_chars），并保存存档。
+   - 网页中途断开时，路由的 `ClosingStreamingResponse` 在本次请求内显式关闭事件生成器（`anyio.CancelScope(shield=True)` 包住 `aclose`）。Starlette 自己不关：断开发生在发送某一段时，生成器要等垃圾回收才关，那时已不在请求上下文里，存档因拿不到调用编号被跳过，模型锁也一直占着。
+   - 模型流用 `contextlib.aclosing` 包住，外层生成器关闭时模型连接一起关。
 6. `chat.context` 日志字段：ms、prompt_versions、prompt_sha256 前 12 位、prompt_locked、context_chars、messages、question_chars、selection、sources（盘口状态、抓取时间、是否过期、比赛数、历史文件数，以及各来源抓取时间）和 analysis（cards、analysis_ms、cache_hits、cache_misses）。
 
 ## 选哪几场比赛
@@ -122,7 +124,7 @@
 
 | 日期 | 方式或命令 | 实际结果与边界 |
 | --- | --- | --- |
-| 2026-11-15 | `cd backend && uv run --locked python -m unittest discover -s tests` | 本轮运行：172 项全部通过，其中 test_chat 41 项（流式首个事件为 analysis），test_match_analysis 40 项 |
+| 2026-11-15 | `cd backend && uv run --locked python -m unittest discover -s tests` | 本轮运行：175 项全部通过，其中 test_chat 42 项（流式首个事件为 analysis；发送中断开仍写存档并释放锁，去掉修复时该项失败），test_match_analysis 40 项 |
 | 2026-11-15 | `uv run --locked python -m app.services.chat.prompt check` | 本轮运行：通过 |
 | 2026-11-15 | 真实模型核心回归（medium，经 `service.prepare_stream`） | 历史记录：E-001/002/003/006/007/008/009/010/012 通过；E-006 改问“我觉得应该选湖人”；E-011 未跑；low 下 E-010 和“分析全部”内容一致 |
 | 2026-11-15 | 速度对比（执行方案 3.7，medium） | 历史记录：选场 E-010 首字 8.3s→6.2s、总用时 31.6s→28.5s、输入 6519→7949；low 为 2.6s/22.7s。整张表 11.6/28.8/7826→3.4/17.5/10559。网页真实 5 场（trace `3b96855dead9`）8.6s/24.3s，输入 20327、输出 1013。思考强度保持 medium |
@@ -150,3 +152,4 @@
   - 微弱倾向的文字曾有误导；
   - E-012 用固定时钟读真实文件，触发了“时间异常”提示。
 - 旧文档曾写“忙碌返回 409”“13 场约 36KB”，与当前代码不符：现在忙碌为 429，15 场约 12 万字。
+- 2026-11-15：推送前审查后修正：网页在发送中断开时显式关闭事件流和模型流，存档带上调用编号、锁立即释放，175 项测试。
