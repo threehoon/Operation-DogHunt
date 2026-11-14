@@ -1,6 +1,7 @@
 """读取、检查并拼装聊天助手的静态提示词。
 
-提示词文件在 app/prompts/chat/，当前版本与各文件哈希记在 versions.lock.json。
+提示词文件在 app/prompts/chat/modules/{模块}/，改版记录在 records/，当前版本与各文件哈希记在根上的
+versions.lock.json（按版本名登记，和文件放在哪个文件夹无关）。
 锁文件由维护 Skill（$chat-prompt-maintenance）通过本模块的命令行更新，不手写：
 
     .venv/bin/python -m app.services.chat.prompt check
@@ -18,9 +19,12 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
-CHAT_DIR = Path(__file__).resolve().parents[2] / "prompts" / "chat"
+CHAT_DIR = Path(__file__).resolve().parents[3] / "prompts" / "chat"
 LOCK_NAME = "versions.lock.json"
 CHANGELOG_NAME = "CHANGELOG.md"
+MODULES_DIR = "modules"  # modules/{模块}/chat_{模块}_v{n}.md
+RECORDS_DIR = "records"  # CHANGELOG.md、issues.md
+EVAL_DIR = "eval"  # eval_cases.md、snapshots/
 # 拼装顺序固定；每个模块在 active 里恰好一个版本。
 MODULES = ("role", "sources", "odds", "method", "output")
 _FILE = re.compile(r"^chat_([a-z]+)_v(\d+)\.md$")
@@ -46,8 +50,16 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def version_path(directory: Path, stem: str) -> Path:
+    """版本文件的位置；模块名取自版本名，例如 chat_method_v7 → modules/method/。"""
+    match = _FILE.match(f"{stem}.md")
+    module = match.group(1) if match else "_unknown"
+    return directory / MODULES_DIR / module / f"{stem}.md"
+
+
 def _prompt_files(directory: Path) -> dict[str, Path]:
-    return {p.stem: p for p in sorted(directory.glob("chat_*.md")) if _FILE.match(p.name)}
+    found = sorted((directory / MODULES_DIR).glob("*/chat_*.md"))
+    return {p.stem: p for p in found if _FILE.match(p.name)}
 
 
 def _load_lock(directory: Path) -> dict:
@@ -71,7 +83,7 @@ def _check_active(active: list) -> list[str]:
 
 
 def assemble(directory: Path, versions: list[str]) -> str:
-    parts = [_read(directory / f"{v}.md").strip() for v in versions]
+    parts = [_read(version_path(directory, v)).strip() for v in versions]
     return "\n\n".join(parts) + "\n"
 
 
@@ -83,20 +95,27 @@ def check(directory: Path = CHAT_DIR) -> list[str]:
         return [str(exc)]
     problems = _check_active(lock["active"])
     files = _prompt_files(directory)
-    for stray in sorted(p.name for p in directory.glob("*.md") if p.name.startswith("chat_") and not _FILE.match(p.name)):
+    modules_dir = directory / MODULES_DIR
+    for stray in sorted(p.name for p in modules_dir.glob("*/*.md") if p.name.startswith("chat_") and not _FILE.match(p.name)):
         problems.append(f"{stray}：文件名应为 chat_{{模块}}_v{{数字}}.md")
+    for loose in sorted(p.name for p in directory.glob("chat_*.md")):
+        problems.append(f"{loose}：版本文件应放在 {MODULES_DIR}/{{模块}}/ 下，不能放在根目录")
     for stem, path in files.items():
         first = _read(path).splitlines()[:1]
         if first != [f"# {stem}"]:
             problems.append(f"{path.name}：第一行必须是 `# {stem}`")
-        if _FILE.match(path.name).group(1) not in MODULES:
+        module = _FILE.match(path.name).group(1)
+        if module not in MODULES:
             problems.append(f"{path.name}：模块名不在 {MODULES} 中")
+        elif path.parent.name != module:
+            problems.append(f"{path.name}：应放在 {MODULES_DIR}/{module}/，现在在 {MODULES_DIR}/{path.parent.name}/")
         if stem not in lock["files"]:
             problems.append(f"{path.name}：未登记到 {LOCK_NAME}，请运行 $chat-prompt-maintenance 记录改版")
-    changelog = _read(directory / CHANGELOG_NAME) if (directory / CHANGELOG_NAME).exists() else ""
+    changelog_path = directory / RECORDS_DIR / CHANGELOG_NAME
+    changelog = _read(changelog_path) if changelog_path.exists() else ""
     headings = set(re.findall(r"^### (chat_[a-z]+_v\d+)", changelog, re.M))
     for stem, entry in lock["files"].items():
-        path = directory / f"{stem}.md"
+        path = version_path(directory, stem)
         if not path.exists():
             problems.append(f"{stem}.md：锁文件里登记了，但文件不存在（旧版本不能删除）")
             continue
@@ -117,7 +136,7 @@ def build(directory: Path = CHAT_DIR) -> ChatPrompt:
     if problems := _check_active(lock["active"]):
         raise ChatPromptError(problems[0])
     for v in lock["active"]:
-        path = directory / f"{v}.md"
+        path = version_path(directory, v)
         if not path.exists():
             raise ChatPromptError(f"当前版本文件 {path.name} 不存在")
         if _read(path).splitlines()[:1] != [f"# {v}"]:
@@ -181,6 +200,3 @@ def main(argv: list[str] | None = None) -> int:
         print(f"失败：{exc}", file=sys.stderr)
         return 1
 
-
-if __name__ == "__main__":
-    raise SystemExit(main())

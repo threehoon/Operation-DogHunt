@@ -41,7 +41,7 @@ API 是程序访问外部服务的通道；此工具通过 The Odds API 获取�
 | 保存数据时间和调用额度 | 已实现 | `fetch`、`save_snapshot` |
 | 自动定时、自动重试 | 未实现 | `main` 为单次流程，异常后停止 |
 | 完整赛程、伤病和赛果 | 脚本未接入；后端更新盘口后在后台取近 30 天赛程与比分（BALLDONTLIE）、伤病列表（DunkAPI）、本季整季比分（BALLDONTLIE，推算实力分）和球队效率（DunkAPI），见[后端子块](backend.md) | 脚本只访问盘口端点，无其他数据 |
-| 聊天读取保存盘口 | 已接入；每次读最新快照，支持选定比赛和平台，无外部刷新 | [odds_context.py](../../backend/app/services/chat/odds_context.py)、[service.py](../../backend/app/services/chat/service.py) |
+| 聊天读取保存盘口 | 已接入；每次读最新快照，支持选定比赛和平台，无外部刷新 | [odds_context.py](../../backend/app/services/chat/context/payload.py)、[service.py](../../backend/app/services/chat/service.py) |
 | 网站调用 | 已接入只读快照及手动刷新；打开网页和切日期不消耗额度 | `GET /api/v1/odds`、`POST /api/v1/odds/refresh` |
 
 ## 验证记录

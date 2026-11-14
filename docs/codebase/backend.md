@@ -38,7 +38,7 @@ FastAPI 是提供后端接口的 Python 框架。后端提供连通检查、中�
 | --- | --- | --- |
 | 应用和健康检查 | 已有源码实现 | `create_app`、`health`、`HealthResponse` |
 | 网页盘口 | 读取最新快照、手动更新一次、进程内互斥及 60 秒间隔；失败保留旧文件 | [odds 路由](../../backend/app/api/routes/odds.py)、[board.py](../../backend/app/services/odds/board.py) |
-| 模型聊天 | 已实现：`POST /chat`（完整返回）与 `POST /chat/stream`（SSE：delta/done/error，开始推送前的错误仍用 HTTP 状态码，开始后任何意外异常也转成 error 事件）；每次只读最新快照，未选场时按问题里的球队聚焦；市场信号、休息天数、战绩、伤病、实力分与效率在选场时给该场，未选场时给开赛最早的至多 15 场（`DETAIL_EVENT_LIMIT`，超出时用 `details_limit` 说明覆盖场数）；静态提示词来自 `prompts/chat/` 五个版本文件（资料等级、分析方法、预测模板），再追加北京时间与快照；传递历史、限制并发 | [service.py](../../backend/app/services/chat/service.py)、[prompt.py](../../backend/app/services/chat/prompt.py)、[odds_context.py](../../backend/app/services/chat/odds_context.py)、[聊天结构](../../backend/app/schemas/chat.py) |
+| 模型聊天 | 已实现：`POST /chat`（完整返回）与 `POST /chat/stream`（SSE：delta/done/error，开始推送前的错误仍用 HTTP 状态码，开始后任何意外异常也转成 error 事件）；每次只读最新快照，未选场时按问题里的球队聚焦；市场信号、休息天数、战绩、伤病、实力分与效率在选场时给该场，未选场时给开赛最早的至多 15 场（`DETAIL_EVENT_LIMIT`，超出时用 `details_limit` 说明覆盖场数）；静态提示词来自 `prompts/chat/` 五个版本文件（资料等级、分析方法、预测模板），再追加北京时间与快照；传递历史、限制并发 | [service.py](../../backend/app/services/chat/service.py)、[prompt.py](../../backend/app/services/chat/prompt/__init__.py)、[odds_context.py](../../backend/app/services/chat/context/payload.py)、[聊天结构](../../backend/app/schemas/chat.py) |
 | 功能块提示词与检查 | 部分实现：框架完成，见下方“功能块框架增量”；提示词为草稿，没有指标程序、批量脚本或接口调用它 | [prompts](../../backend/app/prompts/README.md)、[analysis](../../backend/app/services/analysis/runner.py) |
 | 自动外部取数与记忆 | 未实现；聊天只读快照，不具备自动更新盘口或联网伤病工具 | [memory](../../backend/app/services/memory/__init__.py) |
 | GPT 中转连接 | 已实现：Responses 流式接口，每次显式发送 `reasoning.effort`（后端可配，默认 `high`）；`stream_model` 边收边产出 `TextDelta`，最后产出完整结果，`request_model` 收齐后返回；日志记录首字时间、总耗时与 token 数；完整结果校验、总超时和错误脱敏，不自动重试、不跟随重定向；代理环境变量解析失败（`httpx.InvalidURL`，如 NO_PROXY 含 `::1/128`）返回 503 明确提示 | [llm.py](../../backend/app/integrations/llm.py) |
@@ -125,10 +125,10 @@ FastAPI 是提供后端接口的 Python 框架。后端提供连通检查、中�
 | --- | --- | --- |
 | [prompts/chat/](../../backend/app/prompts/chat/README.md) | `chat_{role,sources,odds,method,output}_v{n}.md` | 静态提示词，按此顺序拼装；第一行版本标识与文件名一致；当前版本以 `versions.lock.json` 的 `active` 为准（截至 2026-11-13：role v1、sources v2、odds v3、method v4、output v3） |
 | [versions.lock.json](../../backend/app/prompts/chat/versions.lock.json) | `active` / `files` / `static_sha256` | 当前版本、各版本哈希与字数；只由命令生成 |
-| [prompt.py](../../backend/app/services/chat/prompt.py) | `build` / `static_prompt` / `check` / `update_lock` / `main` | 读取与拼装（进程内缓存，改文件需重启）；`check` 核对哈希、未登记文件、旧版本被改或删、`CHANGELOG.md` 条目；`lock` 拒绝改写已登记版本 |
+| [prompt.py](../../backend/app/services/chat/prompt/__init__.py) | `build` / `static_prompt` / `check` / `update_lock` / `main` | 读取与拼装（进程内缓存，改文件需重启）；`check` 核对哈希、未登记文件、旧版本被改或删、`CHANGELOG.md` 条目；`lock` 拒绝改写已登记版本 |
 | [service.py](../../backend/app/services/chat/service.py) | `chat` | 静态提示词 + 北京时间 + 快照；日志记录版本与哈希前 12 位；文件和锁不一致只记警告，锁缺失或损坏返回 503 且不调用模型 |
-| [CHANGELOG.md](../../backend/app/prompts/chat/CHANGELOG.md)、[issues.md](../../backend/app/prompts/chat/issues.md)、[eval_cases.md](../../backend/app/prompts/chat/eval_cases.md) | — | 改版记录、问题记录、7 条回归用例；每条用例注明所用快照 |
-| [eval_snapshots/](../../backend/app/prompts/chat/eval_snapshots/S-001.json) | `_eval.now` / `_eval.selection` | 回归用的固定盘口快照，格式同保存快照；`S-001` 为合成数据，不是真实报价；`prompt.py` 只读 `chat_*.md`，不受影响 |
+| [CHANGELOG.md](../../backend/app/prompts/chat/records/CHANGELOG.md)、[issues.md](../../backend/app/prompts/chat/records/issues.md)、[eval_cases.md](../../backend/app/prompts/chat/eval/eval_cases.md) | — | 改版记录、问题记录、7 条回归用例；每条用例注明所用快照 |
+| [eval_snapshots/](../../backend/app/prompts/chat/eval/snapshots/S-001.json) | `_eval.now` / `_eval.selection` | 回归用的固定盘口快照，格式同保存快照；`S-001` 为合成数据，不是真实报价；`prompt.py` 只读 `chat_*.md`，不受影响 |
 
 - 原 service.py 中的盘口规则迁入 `chat_odds_v1`，意思不变；新增资料等级、分析方法和预测模板会改变回答风格；2026-11-13 已真实试跑核心用例，结果见验证记录。
 - `chat_method_v2`（I-001）：缺资料本身不再构成观望理由，只降低把握并写进缺失资料与风险；观望时要说明原因。改版后未真实试跑，效果待回归验证。
@@ -153,9 +153,9 @@ FastAPI 是提供后端接口的 Python 框架。后端提供连通检查、中�
 | [llm.py](../../backend/app/integrations/llm.py) | `TextDelta` / `stream_model` / `request_model` | 转发 `response.output_text.delta`；只有 `response.completed` 才产出完整 `ChatResponse`，之前的文字不算交付；JSON 兼容返回整段作为一个 delta；INFO 日志“模型耗时 effort= 首字= 总计= 输入= 输出= 思考=” |
 | [service.py](../../backend/app/services/chat/service.py) | `build_instructions` / `chat` / `prepare_stream` / `busy` | 拼装提示前先读快照与历史快照；流式在生成器里获取并发锁，开始前再判断一次，连接断开随生成器释放 |
 | [routes/chat.py](../../backend/app/api/routes/chat.py) | `stream_chat` | `POST /api/v1/chat/stream`，`text/event-stream`，`Cache-Control: no-store`、`X-Accel-Buffering: no` |
-| [odds_context.py](../../backend/app/services/chat/odds_context.py) | `TEAM_ALIASES` / `mentioned_teams` / `focus_teams` / `odds_context` | 30 队中英文叫法；未选场时取最近一条提到球队的用户消息聚焦，写入 `focus`；找不到比赛时给空列表，不回退整表；用户消息里 `SELECTION_MARK`（`\n\n本次选场：`，与前端一致）之后的选场标签不算提到球队，遇到问全部、其他、别的、哪场、几场比赛的消息停止沿用并给整表（2026-11-14 修复：取消选场后问别的比赛仍只给原来那场）；13 场整表约 36KB，聚焦一场约 4.5KB |
+| [odds_context.py](../../backend/app/services/chat/context/payload.py) | `TEAM_ALIASES` / `mentioned_teams` / `focus_teams` / `odds_context` | 30 队中英文叫法；未选场时取最近一条提到球队的用户消息聚焦，写入 `focus`；找不到比赛时给空列表，不回退整表；用户消息里 `SELECTION_MARK`（`\n\n本次选场：`，与前端一致）之后的选场标签不算提到球队，遇到问全部、其他、别的、哪场、几场比赛的消息停止沿用并给整表（2026-11-14 修复：取消选场后问别的比赛仍只给原来那场）；13 场整表约 36KB，聚焦一场约 4.5KB |
 | [signals.py](../../backend/app/services/odds/signals.py) | `event_lines` / `load_history` / `market_signals` | 主队视角让分点；各平台中位数共识、范围、各边最有利的线及平台、所选平台与共识的差、最早快照到当前的共识与所选平台线变动；最多读最近 60 份快照，按路径缓存 |
-| [prompts/chat/](../../backend/app/prompts/chat/CHANGELOG.md) | `chat_odds_v2` / `chat_method_v3` / `chat_output_v2` | 两个玩法必须给倾向、不给观望；结论与预计范围置顶；300 字以内；去掉“资料不足，不给数字”；说明 `focus` 与 `market_signals` 用法。静态提示词 2520 → 3233 字 |
+| [prompts/chat/](../../backend/app/prompts/chat/records/CHANGELOG.md) | `chat_odds_v2` / `chat_method_v3` / `chat_output_v2` | 两个玩法必须给倾向、不给观望；结论与预计范围置顶；300 字以内；去掉“资料不足，不给数字”；说明 `focus` 与 `market_signals` 用法。静态提示词 2520 → 3233 字 |
 
 - 设计取舍：在只有盘口和模型记忆时，强制给出的倾向基本不含盘口之外的信息，靠把握分档（多为“低”）区分；用户已知悉并要求给方向。
 - 当前只有 4 份保存快照，尼克斯 @ 步行者只出现在 1 份里，因此盘口变动信号要等多次手动更新后才有内容。
@@ -171,8 +171,8 @@ FastAPI 是提供后端接口的 Python 框架。后端提供连通检查、中�
 | [balldontlie.py](../../backend/app/integrations/balldontlie.py) | `load_key` / `fetch_games` / `ScheduleError` | Key 读环境变量或根目录 `.env.local` 的 `BALLDONTLIE_API_KEY`，未配置返回 None；`GET /v1/games?dates[]=…&per_page=100`，`Authorization` 头直接放 Key；按 `next_cursor` 翻页最多 3 页，超出不保存；不跟随重定向、10 秒超时、不重试；错误不带原文 |
 | [schedule.py](../../backend/app/services/odds/schedule.py) | `refresh_schedule` / `load_schedule` / `rest_context` / `TEAM_BY_ABBR` | 只取每场已开盘比赛的东部日期及其前 5 天（`needed_dates`，记入 `dates`）；不用起止范围，因为快照里有远期比赛（如圣诞大战）时范围会拉到 288 场、正好 3 页；按缩写对到 The Odds API 全名（快船两边写法不同），跳过延期；新建 `data/schedule/<UTC时间>-<id>/schedule.json`，不覆盖旧文件；最新一份损坏时不回退。东部日期用固定 UTC-5（Windows 没有 tzdata）。每支球队给 `rest_days`（0 为背靠背）、`rest_days_at_least`、`games_in_4_days`（含本场）、`previous_game`；赛程里找不到这场对阵时 `listed_in_schedule` 为 false；所需日期不全时 `not_covered`；前 5 天都没比赛记为 `rest_days_at_least: 5` |
 | [board.py](../../backend/app/services/odds/board.py) | `refresh_board` | 盘口快照保存后调用 `schedule.log_refresh`，结果写日志；任何赛程异常都不改变盘口更新结果 |
-| [odds_context.py](../../backend/app/services/chat/odds_context.py)、[service.py](../../backend/app/services/chat/service.py) | `odds_context(..., schedule)` / `build_instructions` | 读最新赛程（`to_thread`），选场时给该场、未选场时给开赛最早的至多 15 场的 `schedule_rest`（2026-11-14 起，原为 3 场以内）；没有赛程时为 `unavailable` |
-| [prompts/chat/](../../backend/app/prompts/chat/CHANGELOG.md) | `chat_sources_v2` / `chat_odds_v3` / `chat_method_v4` | 赛程快照算 A 级；说明 `schedule_rest` 字段；休息差作为一档倾向理由（排在所选平台差价之后、C 级打法之前），单独使用时把握不超过“中”。静态提示词 3233 → 3711 字 |
+| [odds_context.py](../../backend/app/services/chat/context/payload.py)、[service.py](../../backend/app/services/chat/service.py) | `odds_context(..., schedule)` / `build_instructions` | 读最新赛程（`to_thread`），选场时给该场、未选场时给开赛最早的至多 15 场的 `schedule_rest`（2026-11-14 起，原为 3 场以内）；没有赛程时为 `unavailable` |
+| [prompts/chat/](../../backend/app/prompts/chat/records/CHANGELOG.md) | `chat_sources_v2` / `chat_odds_v3` / `chat_method_v4` | 赛程快照算 A 级；说明 `schedule_rest` 字段；休息差作为一档倾向理由（排在所选平台差价之后、C 级打法之前），单独使用时把握不超过“中”。静态提示词 3233 → 3711 字 |
 
 - 配置：`.env.example` 增加 `BALLDONTLIE_API_KEY=`；`.gitignore` 增加 `data/schedule/`。
 - 测试：`test_odds.py` 新增 `ScheduleTests` 4 项（缩写映射与延期、休息天数与背靠背和窗口覆盖、未配置不请求与失败不留文件、翻页与 429，用 `httpx.MockTransport`）；刷新测试打桩 `log_refresh`；`test_chat.py` 新增 `schedule_rest` 用例，路由测试打桩 `load_schedule`。
@@ -185,7 +185,7 @@ FastAPI 是提供后端接口的 Python 框架。后端提供连通检查、中�
 
 | 源码或文件 | 关键符号 | 变化 |
 | --- | --- | --- |
-| [prompts/chat/](../../backend/app/prompts/chat/CHANGELOG.md) | `chat_output_v3`（替换 `chat_output_v2`） | 结论行每个把握加一句原因；让分、大小分分节，各有因素表（含缺失项）、“预计怎么来的”（共识线 → 调整 → 范围）、“把握说明”（命中哪档、补什么能升档）；单场 700 字以内（表格不计）；分档改写，休息差明确算“中”，报价差“1 分以内”为“低”，“高”要求 B 级或盘口明显移动且伤病已知。静态提示词 3711 → 4465 字 |
+| [prompts/chat/](../../backend/app/prompts/chat/records/CHANGELOG.md) | `chat_output_v3`（替换 `chat_output_v2`） | 结论行每个把握加一句原因；让分、大小分分节，各有因素表（含缺失项）、“预计怎么来的”（共识线 → 调整 → 范围）、“把握说明”（命中哪档、补什么能升档）；单场 700 字以内（表格不计）；分档改写，休息差明确算“中”，报价差“1 分以内”为“低”，“高”要求 B 级或盘口明显移动且伤病已知。静态提示词 3711 → 4465 字 |
 
 - 记录：`CHANGELOG.md`、`issues.md` I-004、`README.md` 版本表；`eval_cases.md` 更新 E-001 期望，新增核心用例 E-009（S-001 + E-008 赛程，DraftKings 掘金 -6.5 比共识 -6.75 有利 0.25 分、湖人背靠背）。
 - 运行配置：`DOGHUNT_MODEL_MAX_OUTPUT_TOKENS` 默认 4096，且 `reasoning.effort=high` 的思考 token 也计入这个上限；E-009 实测输出 1326 tokens 未截断，更长回答未测。
@@ -203,8 +203,8 @@ FastAPI 是提供后端接口的 Python 框架。后端提供连通检查、中�
 | `espn.py`（已于 2026-11-14 删除，伤病改用 DunkAPI） | `fetch_injuries` / `InjuryError` | 新文件。`site.api.espn.com/.../nba/injuries`，非官方、无 Key；25 秒超时、不跟随重定向、不重试 |
 | [injuries.py](../../backend/app/services/odds/injuries.py) | `normalize_injuries` / `refresh_injuries` / `load_injuries` / `injury_context` / `log_refresh` | 新文件。按 30 队对名（ESPN 写 “LA Clippers”），每人保留姓名、位置、状态、报告时间、部位、预计复出、短评（截 160 字）；全都对不上时视为格式变化不保存；新建 `data/injuries/<UTC时间>-<id>/injuries.json`；最新一份损坏不回退；采集超过 12 小时标 `stale`；`listed: false` 表示 ESPN 未列出该队 |
 | [board.py](../../backend/app/services/odds/board.py) | `start_extras` | 盘口保存后改为后台线程依次跑赛程与伤病（两者合计可能超过前端更新的 25 秒超时）；上一轮未结束时跳过，避免触发 BALLDONTLIE 5 次/分钟限制 |
-| [odds_context.py](../../backend/app/services/chat/odds_context.py)、[service.py](../../backend/app/services/chat/service.py) | `odds_context(..., schedule, injuries)` / `build_instructions` | 与 `schedule_rest` 同范围附带 `team_form`、`injuries`（与 `schedule_rest` 同条件）；读最新伤病用 `to_thread` |
-| [prompts/chat/](../../backend/app/prompts/chat/CHANGELOG.md) | `chat_sources_v3` / `chat_odds_v4` / `chat_method_v5` / `chat_output_v4` | A 级按来源细分并要求写出来源；说明两个新字段；战绩推算（净胜分差 + 2 分主场）与共识差 3 分以上、总分差 4 分以上才算选边理由（门槛未经数据验证）；早于最后一场的缺阵不重复计算；已公布伤病和休息差视为盘口已计入，只靠它们不超过“中”。静态提示词 4465 → 6551 字 |
+| [odds_context.py](../../backend/app/services/chat/context/payload.py)、[service.py](../../backend/app/services/chat/service.py) | `odds_context(..., schedule, injuries)` / `build_instructions` | 与 `schedule_rest` 同范围附带 `team_form`、`injuries`（与 `schedule_rest` 同条件）；读最新伤病用 `to_thread` |
+| [prompts/chat/](../../backend/app/prompts/chat/records/CHANGELOG.md) | `chat_sources_v3` / `chat_odds_v4` / `chat_method_v5` / `chat_output_v4` | A 级按来源细分并要求写出来源；说明两个新字段；战绩推算（净胜分差 + 2 分主场）与共识差 3 分以上、总分差 4 分以上才算选边理由（门槛未经数据验证）；早于最后一场的缺阵不重复计算；已公布伤病和休息差视为盘口已计入，只靠它们不超过“中”。静态提示词 4465 → 6551 字 |
 
 - 配置：`.gitignore` 增加 `data/injuries/`；没有新依赖，没有新环境变量。
 - 回归资料：新增 `eval_snapshots/D-001.json`（合成赛程比分与伤病，配合 S-001），`eval_cases.md` 新增 E-010（核心）、E-011；`EvalSnapshotTests` 核对 D-001 数字。
@@ -244,8 +244,8 @@ FastAPI 是提供后端接口的 Python 框架。后端提供连通检查、中�
 | [season.py](../../backend/app/services/odds/season.py) | `refresh_season` / `load_season` / `ratings` / `strength_context` | 首次取全季，之后从最后一场有比分的日期往前 3 天增量更新，6 小时内不重复；只留常规赛；新建 `data/season/<UTC时间到微秒>-<id>/season.json`（精确到微秒，同一秒内两次保存也按时间排序；赛程和伤病模块仍是到秒，未改）。`ratings` 只用本场东部日期之前的比赛，按 SRS 方式迭代求实力分（联盟平均 0），主场优势取本季主队场均净胜分；少于 30 场不给；两队 games 都不少于 5 时给 `model_home_margin` |
 | [team_stats.py](../../backend/app/services/odds/team_stats.py) | `refresh_team_stats` / `load_team_stats` / `projected_total` / `efficiency_context` | 一次 `get_team_stats` 返回 30 队（已实测），20 小时内不重复；“LA Clippers” 对名；比例字段换成百分数；新建 `data/team_stats/.../team_stats.json`；超过 36 小时标 `stale`；两队 games 都不少于 5 时给 `projection`（回合数 = 两队 pace 平均，得分 = 回合数 × (本队进攻 + 对手防守) / 200） |
 | [board.py](../../backend/app/services/odds/board.py) | `start_extras` | 后台顺序：赛程 → 伤病 → 球队效率 → 整季比分（最慢，放最后） |
-| [odds_context.py](../../backend/app/services/chat/odds_context.py)、[service.py](../../backend/app/services/chat/service.py) | `odds_context(..., season, team_stats)` / `build_instructions` | 与 `team_form` 同范围（选场或至多 15 场）附带 `season_strength`、`team_efficiency` |
-| [prompts/chat/](../../backend/app/prompts/chat/CHANGELOG.md) | `chat_sources_v4` / `chat_odds_v5` / `chat_method_v6` | 新增两项 A 级资料与字段说明；实力推算优先 `model_home_margin`，总分推算优先 `projection.total`，没有时退回 `team_form`；门槛 3 分 / 4 分不变。静态提示词 6551 → 7599 字；记录 I-006、E-012 |
+| [odds_context.py](../../backend/app/services/chat/context/payload.py)、[service.py](../../backend/app/services/chat/service.py) | `odds_context(..., season, team_stats)` / `build_instructions` | 与 `team_form` 同范围（选场或至多 15 场）附带 `season_strength`、`team_efficiency` |
+| [prompts/chat/](../../backend/app/prompts/chat/records/CHANGELOG.md) | `chat_sources_v4` / `chat_odds_v5` / `chat_method_v6` | 新增两项 A 级资料与字段说明；实力推算优先 `model_home_margin`，总分推算优先 `projection.total`，没有时退回 `team_form`；门槛 3 分 / 4 分不变。静态提示词 6551 → 7599 字；记录 I-006、E-012 |
 
 - 配置：`.env.example` 和本机 `.env.local` 增加 `DUNKAPI_API_KEY`；`.gitignore` 增加 `data/season/`、`data/team_stats/`、`data/dunkapi/`；没有新依赖。
 - 测试：新增 [test_data_sources.py](../../backend/tests/test_data_sources.py)，覆盖赛季年份与常规赛过滤、实力分还原已知强弱与主场优势、样本不足、全季→增量更新、限速器等待、整季请求参数、DunkAPI 对名与比例换算、推算总分、账本超预算 / 损坏 / 跨月重置、HTTP 错误不重试、聊天上下文；`test_odds` 的后台补充取数测试打桩新两步；`test_chat` 路由测试打桩 `load_season`、`load_team_stats`。
@@ -260,10 +260,10 @@ FastAPI 是提供后端接口的 Python 框架。后端提供连通检查、中�
 | 源码 | 关键符号 | 用途 |
 | --- | --- | --- |
 | [injuries.py](../../backend/app/services/odds/injuries.py) | `refresh_injuries` / `normalize_injuries` / `carry_listing` / `new_since` / `injury_context` | `dunkapi.call("get_injuries", {"league": "nba"})`（2 credits），4 小时内不重复；缩写 GS、NO、NY、SA、UTAH、WSH 对到 BALLDONTLIE 写法再转全名；字段 `player_id`、`player`、`position`、`status`、`injury`、`detail`、`return_date`。`carry_listing` 与上一份 DunkAPI 快照比对：同一球员同一状态沿用 `listed_since`/`listed_after`，新出现或状态变化时 `listed_since` = 本次采集、`listed_after` = 上一份采集时间；上一份是 ESPN 或没有时 `listed_after` 为空。`new_since` 按东部日期：`listed_after` 晚于该队最后一场 → true，`listed_since` 早于最后一场 → false，其余 null。保存记录带 `report_date` |
-| [odds_context.py](../../backend/app/services/chat/odds_context.py) | `odds_context` | 先算 `team_form`，再传给 `injury_context(..., form=)`，每队输出 `last_game` 和每人的 `new_since_last_game` |
+| [odds_context.py](../../backend/app/services/chat/context/payload.py) | `odds_context` | 先算 `team_form`，再传给 `injury_context(..., form=)`，每队输出 `last_game` 和每人的 `new_since_last_game` |
 | [board.py](../../backend/app/services/odds/board.py) | `start_extras` | 顺序不变（赛程 → 伤病 → 球队效率 → 整季比分），伤病改走 DunkAPI，共用本地 credits 账本 |
-| [eval_snapshots/D-001.json](../../backend/app/prompts/chat/eval_snapshots/D-001.json) | `injuries` | 合成伤病改成 DunkAPI 格式，Guard A 判为新伤病、Center B 判为已在战绩里 |
-| [prompts/chat/](../../backend/app/prompts/chat/CHANGELOG.md) | `chat_sources_v5` / `chat_odds_v6` / `chat_method_v7` / `chat_output_v5` | 伤病来源改 DunkAPI；新伤病只看服务端的 `new_since_last_game`，null 时只说明不作选边理由；球员作用只能用 C 级。静态提示词 7599 → 7837 字 |
+| [eval_snapshots/D-001.json](../../backend/app/prompts/chat/eval/snapshots/D-001.json) | `injuries` | 合成伤病改成 DunkAPI 格式，Guard A 判为新伤病、Center B 判为已在战绩里 |
+| [prompts/chat/](../../backend/app/prompts/chat/records/CHANGELOG.md) | `chat_sources_v5` / `chat_odds_v6` / `chat_method_v7` / `chat_output_v5` | 伤病来源改 DunkAPI；新伤病只看服务端的 `new_since_last_game`，null 时只说明不作选边理由；球员作用只能用 C 级。静态提示词 7599 → 7837 字 |
 
 - `integrations/espn.py` 已按用户确认删除；本机旧的 ESPN 伤病快照（如有）只会被当作“没有上一份”，不用来推算 `listed_since`。
 - 测试：`test_odds.InjuryTests` 改为 DunkAPI（缩写对名、未配置 Key 不请求、4 小时内跳过、状态变化与新球员的时间记录、失败保留旧文件、`new_since` 边界、ESPN 旧快照不参与比对）；`test_chat` 的伤病测试和 D-001 测试改为检查 `last_game`、`new_since_last_game`。三个取数模块的保存时间改用传入的 `now`，测试不再依赖真实时钟。

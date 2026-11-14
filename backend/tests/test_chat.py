@@ -18,7 +18,8 @@ from app.main import create_app
 from app.schemas.chat import ChatMessage, ChatResponse, OddsSelection
 from app.schemas.odds import OddsBoard
 from app.services.chat import prompt as chat_prompt
-from app.services.chat.odds_context import focus_teams, mentioned_teams, odds_context
+from app.services.chat.context.payload import odds_context
+from app.services.chat.context.teams import focus_teams, mentioned_teams
 from app.services.odds.board import build_board
 from test_odds import snapshot
 
@@ -439,7 +440,7 @@ class FocusTests(unittest.TestCase):
         context = json.loads(odds_context(board, None, ask, None, record))
         self.assertEqual((len(context["events"]), context["details_limit"]), (2, None))
         self.assertEqual(set(context["schedule_rest"]["events"]), {"game", "later"})
-        with patch("app.services.chat.odds_context.DETAIL_EVENT_LIMIT", 1):
+        with patch("app.services.chat.context.payload.DETAIL_EVENT_LIMIT", 1):
             context = json.loads(odds_context(board, None, ask, None, record))
         self.assertEqual(len(context["events"]), 2)  # 报价仍然全部给出
         self.assertEqual(context["details_limit"], {"covered": 1, "total": 2})
@@ -457,8 +458,11 @@ class ChatPromptTests(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmp)
 
-    def write(self, name, text):
-        (self.dir / name).write_text(text, encoding="utf-8")
+    def path(self, stem):
+        return chat_prompt.version_path(self.dir, stem)
+
+    def write(self, stem, text):
+        self.path(stem).write_text(text, encoding="utf-8")
 
     def active(self):
         return json.loads((self.dir / "versions.lock.json").read_text(encoding="utf-8"))["active"]
@@ -478,8 +482,8 @@ class ChatPromptTests(unittest.TestCase):
         self.assertNotIn("<saved_odds_snapshot>", built.text)
 
     def test_edit_without_record_fails(self):
-        path = self.dir / f"{self.active()[3]}.md"
-        self.write(path.name, path.read_text(encoding="utf-8") + "新增一句。\n")
+        path = self.path(self.active()[3])
+        self.write(path.stem, path.read_text(encoding="utf-8") + "新增一句。\n")
         problems = chat_prompt.check(self.dir)
         self.assertTrue(any(path.name in p and "chat-prompt-maintenance" in p for p in problems))
         self.assertFalse(chat_prompt.build(self.dir).locked)
@@ -489,30 +493,37 @@ class ChatPromptTests(unittest.TestCase):
     def test_new_version_must_be_locked_and_logged(self):
         active = self.active()
         current = active[3]
-        number = max(int(p.stem.rsplit("_v", 1)[1]) for p in self.dir.glob("chat_method_v*.md")) + 1
+        number = max(int(p.stem.rsplit("_v", 1)[1]) for p in self.path(current).parent.glob("chat_method_v*.md")) + 1
         new = f"chat_method_v{number}"
-        old = (self.dir / f"{current}.md").read_text(encoding="utf-8")
-        self.write(f"{new}.md", old.replace(f"# {current}", f"# {new}") + "新增一句。\n")
+        old = self.path(current).read_text(encoding="utf-8")
+        self.write(new, old.replace(f"# {current}", f"# {new}") + "新增一句。\n")
         self.assertTrue(any(f"{new}.md" in p and "未登记" in p for p in chat_prompt.check(self.dir)))
         active[3] = new
         chat_prompt.update_lock(self.dir, active)
         self.assertEqual(chat_prompt.check(self.dir), [f"{new}：CHANGELOG.md 里没有 `### {new}` 条目"])
-        with (self.dir / "CHANGELOG.md").open("a", encoding="utf-8") as f:
+        with (self.dir / chat_prompt.RECORDS_DIR / "CHANGELOG.md").open("a", encoding="utf-8") as f:
             f.write(f"\n### {new}（替换 {current}）\n- 测试\n")
         self.assertEqual(chat_prompt.check(self.dir), [])
         self.assertEqual(chat_prompt.build(self.dir).versions[3], new)
 
     def test_header_order_and_deleted_old_version(self):
-        path = self.dir / "chat_role_v1.md"
-        self.write(path.name, path.read_text(encoding="utf-8").replace("# chat_role_v1", "# chat_role_v2", 1))
+        path = self.path("chat_role_v1")
+        self.write(path.stem, path.read_text(encoding="utf-8").replace("# chat_role_v1", "# chat_role_v2", 1))
         self.assertTrue(any("第一行" in p for p in chat_prompt.check(self.dir)))
         with self.assertRaises(chat_prompt.ChatPromptError):
             chat_prompt.build(self.dir)
         shutil.copytree(chat_prompt.CHAT_DIR, self.dir, dirs_exist_ok=True)
         with self.assertRaises(chat_prompt.ChatPromptError):
             chat_prompt.update_lock(self.dir, ["chat_sources_v1", "chat_role_v1", "chat_odds_v1", "chat_method_v1", "chat_output_v1"])
-        (self.dir / "chat_odds_v1.md").unlink()
+        self.path("chat_odds_v1").unlink()
         self.assertTrue(any("旧版本不能删除" in p for p in chat_prompt.check(self.dir)))
+
+    def test_version_file_must_sit_in_its_module_folder(self):
+        source = self.path("chat_role_v1")
+        shutil.move(source, self.dir / chat_prompt.MODULES_DIR / "odds" / source.name)
+        self.assertTrue(any("应放在 modules/role/" in p for p in chat_prompt.check(self.dir)))
+        shutil.move(self.dir / chat_prompt.MODULES_DIR / "odds" / source.name, self.dir / source.name)
+        self.assertTrue(any("不能放在根目录" in p for p in chat_prompt.check(self.dir)))
 
     def test_missing_lock_is_reported(self):
         (self.dir / "versions.lock.json").unlink()
@@ -525,12 +536,12 @@ class EvalSnapshotTests(unittest.TestCase):
     """回归用例引用的固定快照能被程序读取，并且在快照约定的时刻有效。"""
 
     def test_cases_reference_usable_snapshots(self):
-        cases = (chat_prompt.CHAT_DIR / "eval_cases.md").read_text(encoding="utf-8")
+        cases = (chat_prompt.CHAT_DIR / chat_prompt.EVAL_DIR / "eval_cases.md").read_text(encoding="utf-8")
         ids = set(re.findall(r"^- 快照：(S-\d{3})$", cases, re.M))
         self.assertTrue(ids)
         for snapshot_id in sorted(ids):
             with self.subTest(snapshot_id):
-                path = chat_prompt.CHAT_DIR / "eval_snapshots" / f"{snapshot_id}.json"
+                path = chat_prompt.CHAT_DIR / chat_prompt.EVAL_DIR / "snapshots" / f"{snapshot_id}.json"
                 snap = json.loads(path.read_text(encoding="utf-8"))
                 now = datetime.fromisoformat(snap["_eval"]["now"].replace("Z", "+00:00"))
                 board = build_board(snap, now)
@@ -543,7 +554,7 @@ class EvalSnapshotTests(unittest.TestCase):
     def test_d001_matches_numbers_in_cases(self):
         from app.services.odds.injuries import load_injuries
         from app.services.odds.schedule import load_schedule
-        folder = chat_prompt.CHAT_DIR / "eval_snapshots"
+        folder = chat_prompt.CHAT_DIR / chat_prompt.EVAL_DIR / "snapshots"
         data = json.loads((folder / "D-001.json").read_text(encoding="utf-8"))
         snap = json.loads((folder / f"{data['_eval']['for']}.json").read_text(encoding="utf-8"))
         with tempfile.TemporaryDirectory() as directory:  # 和真实文件走同一个读取校验

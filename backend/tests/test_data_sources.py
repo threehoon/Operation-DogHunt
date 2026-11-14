@@ -11,7 +11,7 @@ import httpx
 
 from app.integrations import balldontlie, dunkapi
 from app.schemas.chat import ChatMessage
-from app.services.chat.odds_context import odds_context
+from app.services.chat.context.payload import odds_context
 from app.services.odds import season, team_stats
 from app.services.odds.board import build_board
 from tests.test_odds import bdl_game, snapshot

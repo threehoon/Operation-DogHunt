@@ -13,9 +13,9 @@ Skill 只在被调用时运行，不监听文件。漏记录的修改会让 `tes
 
 都在 `backend/app/prompts/chat/`：
 
-- `chat_{模块}_v{n}.md`：提示词，第一行 `# chat_{模块}_v{n}` 和文件名相同。模块按顺序为 role、sources、odds、method、output。
-- `versions.lock.json`：当前版本 `active`、各版本哈希与字数、静态提示词哈希。只用命令生成，不手改。
-- `CHANGELOG.md`、`issues.md`、`eval_cases.md`：改版记录、问题记录、回归问题集。格式写在各文件开头，照格式追加。
+- `modules/{模块}/chat_{模块}_v{n}.md`：提示词，第一行 `# chat_{模块}_v{n}` 和文件名相同，文件夹名和模块名相同。模块按顺序为 role、sources、odds、method、output。新版本放进同一个模块文件夹。
+- `versions.lock.json`：当前版本 `active`、各版本哈希与字数、静态提示词哈希，按版本名登记。只用命令生成，不手改。
+- `records/CHANGELOG.md`、`records/issues.md`、`eval/eval_cases.md`：改版记录、问题记录、回归问题集。格式写在各文件开头，照格式追加。回归用的固定快照在 `eval/snapshots/`。
 - `README.md`：当前版本表，要和 `active` 一致。
 
 命令（在 `backend/` 下运行）：

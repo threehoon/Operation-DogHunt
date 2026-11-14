@@ -1,6 +1,6 @@
 # 聊天助手提示词
 
-首页聊天框模型的静态提示词。设计依据见 [聊天预测提示词设计文档](../../../../docs/聊天预测提示词设计文档.md)，读取与拼装代码在 `app/services/chat/prompt.py`。
+首页聊天框模型的静态提示词。设计依据见 [聊天预测提示词设计文档](../../../../docs/聊天预测提示词设计文档.md)，读取与拼装代码在 `app/services/chat/prompt/`。
 
 ## 当前版本
 
@@ -14,17 +14,18 @@
 | 4 | method | `chat_method_v7` | 分析方法（必须给倾向；整季实力分与效率推算优先，和共识比较；服务端判定的新伤病、休息差作为理由） |
 | 5 | output | `chat_output_v5` | 结论置顶、分玩法因素表（写具体来源）与预计推导、把握说明与分档、追问 |
 
-拼装：五个文件按上表顺序用空行连接，再由 `service.py` 追加当前北京时间、快照说明和 `<saved_odds_snapshot>`。时间和快照不进静态哈希。后端进程只读一次文件，改完要重启后端。
+版本文件放在 `modules/{模块}/`，例如 `modules/method/chat_method_v7.md`。拼装：五个文件按上表顺序用空行连接，再由 `service.py` 追加当前北京时间、快照说明和 `<saved_odds_snapshot>`。时间和快照不进静态哈希。后端进程只读一次文件，改完要重启后端。
 
 ## 其他文件
 
 | 文件 | 用途 |
 | --- | --- |
-| `versions.lock.json` | 当前版本、各文件哈希与字数、静态提示词哈希；由命令生成，不手写 |
-| `CHANGELOG.md` | 改版记录 |
-| `issues.md` | 使用中发现的问题 |
-| `eval_cases.md` | 回归问题集 |
-| `eval_snapshots/` | 回归用的固定盘口快照（S-）和赛程比分、伤病资料（D-），用法见 `eval_cases.md` |
+| `versions.lock.json` | 当前版本、各文件哈希与字数、静态提示词哈希；按版本名登记，由命令生成，不手写 |
+| `modules/{模块}/` | 各模块的全部版本文件，旧版本保留 |
+| `records/CHANGELOG.md` | 改版记录 |
+| `records/issues.md` | 使用中发现的问题 |
+| `eval/eval_cases.md` | 回归问题集 |
+| `eval/snapshots/` | 回归用的固定盘口快照（S-）和赛程比分、伤病资料（D-），用法见 `eval_cases.md` |
 
 ## 修改方法
 

@@ -3,7 +3,7 @@
 每次改版后用真实模型逐条问一次，新旧版本对比。真实调用会产生费用，执行前先确认。修好一类问题后，把触发它的问题加进来。
 
 - 核心用例（标“核心”）每次改版都跑；其他用例只在改到相关模块时跑。
-- 每条用例固定一份盘口快照，保证新旧版本输入相同。快照放在 `eval_snapshots/`，编号 S-001 起。
+- 每条用例固定一份盘口快照，保证新旧版本输入相同。快照放在本文件旁边的 `snapshots/`，编号 S-001 起。
 
 ## 固定快照
 
@@ -25,7 +25,7 @@ from app.services.chat import service
 from app.services.odds import injuries
 from app.services.odds.board import build_board
 
-snap = json.loads(Path("app/prompts/chat/eval_snapshots/S-001.json").read_text(encoding="utf-8"))
+snap = json.loads(Path("app/prompts/chat/eval/snapshots/S-001.json").read_text(encoding="utf-8"))
 now = datetime.fromisoformat(snap["_eval"]["now"].replace("Z", "+00:00"))
 
 class FixedClock(datetime):

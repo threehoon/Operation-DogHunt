@@ -9,7 +9,7 @@ from app.core import applog
 from app.core.config import Settings
 from app.integrations.llm import ModelError, TextDelta, request_model, stream_model
 from app.schemas.chat import ChatRequest, ChatResponse
-from app.services.chat.odds_context import odds_context
+from app.services.chat.context.payload import odds_context
 from app.services.chat.prompt import ChatPromptError, static_prompt
 from app.services.odds.board import read_board
 from app.services.odds.injuries import load_injuries
