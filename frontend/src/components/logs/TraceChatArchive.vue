@@ -1,6 +1,8 @@
 <script setup lang="ts">
 // 聊天存档：这次提问实际发给模型的全部内容（对话、系统说明、读到的资料）和模型的回答，用来复现“为什么答成这样”。
 import { computed, ref } from 'vue'
+import { analysisCards } from '@/api/chat'
+import AnalysisCards from '@/components/chat/AnalysisCards.vue'
 
 const props = defineProps<{ archive: Record<string, unknown> }>()
 const showInstructions = ref(false)
@@ -29,6 +31,13 @@ const facts = computed(() => {
   return rows.filter(([, value]) => value)
 })
 const sources = computed(() => (props.archive.sources ? JSON.stringify(props.archive.sources, null, 2) : ''))
+// 存档里分析卡按比赛 id 存成对象，换成数组后和聊天页用同一个组件显示。
+const cards = computed(() => {
+  const saved = props.archive.analysis_cards
+  return typeof saved === 'object' && saved !== null ? analysisCards({ cards: Object.values(saved) }) ?? [] : []
+})
+const cardsJson = computed(() => (cards.value.length ? JSON.stringify(props.archive.analysis_cards, null, 2) : ''))
+const showCardsJson = ref(false)
 const selection = computed(() => (props.archive.selection ? JSON.stringify(props.archive.selection, null, 2) : ''))
 </script>
 
@@ -51,6 +60,15 @@ const selection = computed(() => (props.archive.selection ? JSON.stringify(props
       <h3 class="part-title">模型回答<small v-if="archive.reply_complete === false">（没有完整完成，只有中途收到的部分）</small></h3>
       <p v-if="text('reply')" class="reply">{{ text('reply') }}</p>
       <p v-else class="text-3">没有收到回答文字。</p>
+    </section>
+
+    <section v-if="cards.length">
+      <h3 class="part-title">
+        分析卡（{{ cards.length }} 场，服务端在模型之前算好）
+        <button type="button" class="btn btn--sm btn--quiet" :aria-expanded="showCardsJson" @click="showCardsJson = !showCardsJson">{{ showCardsJson ? '收起原始数据' : '原始数据' }}</button>
+      </h3>
+      <AnalysisCards :cards="cards" />
+      <pre v-if="showCardsJson" class="block block--tall mono">{{ cardsJson }}</pre>
     </section>
 
     <section v-if="selection || sources">

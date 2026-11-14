@@ -201,6 +201,10 @@ class RouteTests(FileLogCase, unittest.IsolatedAsyncioTestCase):
         self.assertEqual(events, ["chat.context", "chat.end", "http.request"])
         archive = json.loads((self.root / "traces" / f"{trace_id}.json").read_text(encoding="utf-8"))
         self.assertEqual((archive["outcome"], archive["reply"], archive["reply_complete"]), ("done", "分析", True))
+        self.assertEqual([card["away"] for card in archive["analysis_cards"].values()], ["Boston Celtics"])
+        context = next(e for e in self.entries() if e["trace_id"] == trace_id and e["event"] == "chat.context")
+        self.assertEqual(context["data"]["analysis"]["cards"], 1)
+        self.assertIn("analysis_ms", context["data"]["analysis"])
         self.assertIn("<saved_odds_snapshot>", archive["instructions"])
         self.assertEqual(archive["request"]["messages"][0]["content"], "凯尔特人怎么看")
         self.assertNotIn("test-secret-value", self.raw_text())
@@ -218,7 +222,9 @@ class RouteTests(FileLogCase, unittest.IsolatedAsyncioTestCase):
         request = ChatRequest(messages=[{"role": "user", "content": "测试"}])
         with patch("app.services.chat.service.stream_model", side_effect=provider), applog.trace("0000aaaa1111"):
             stream = await chat_service.prepare_stream(request, settings())
-            await anext(stream)
+            first = await anext(stream)
+            if first.startswith("event: analysis"):  # 测试快照有比赛时先发分析卡
+                await anext(stream)
             await stream.aclose()  # 网页关闭时 Starlette 会这样关掉生成器
         end = [e for e in self.entries() if e["event"] == "chat.end"][-1]
         self.assertEqual((end["level"], end["data"]["outcome"]), ("WARNING", "disconnected"))

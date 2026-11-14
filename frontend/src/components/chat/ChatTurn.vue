@@ -1,6 +1,7 @@
 <script setup lang="ts">
-// 聊天记录里的一条发言：用户的问题靠右，助手的回答按 Markdown 排版并附带模型、耗时和用量；两边都能一键复制。
+// 聊天记录里的一条发言：用户的问题靠右，助手的回答按 Markdown 排版（上方先放服务端的分析卡）并附带模型、耗时和用量；两边都能一键复制。
 import { computed, h, ref, type FunctionalComponent } from 'vue'
+import AnalysisCards from './AnalysisCards.vue'
 import { blocks } from './markdown'
 import { SELECTION_MARK, type Turn } from './types'
 
@@ -51,7 +52,8 @@ async function copy(): Promise<void> {
         <span v-if="streaming" class="turn-meta turn-live">生成中…</span>
         <button v-else type="button" class="btn btn--sm btn--quiet turn-copy" @click="copy">{{ copied ? '已复制' : '复制' }}</button>
       </header>
-      <Markdown :text="turn.content" />
+      <AnalysisCards v-if="turn.analysis?.length" :cards="turn.analysis" />
+      <Markdown v-if="turn.content" :text="turn.content" />
     </template>
   </article>
 </template>

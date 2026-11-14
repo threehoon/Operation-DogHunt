@@ -192,8 +192,12 @@ class RouteTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(context["provider"], "The Odds API")
             self.assertEqual(context["fetched_at"], "2026-11-11T23:59:00Z")
             self.assertEqual(context["stale"], self.read_board.return_value.stale)
-            self.assertEqual([b["key"] for b in context["events"][0]["bookmakers"]], ["a", "b"])
-            self.assertEqual(context["events"][0]["bookmakers"][0]["markets"][0]["outcomes"][0]["point"], 7.5)
+            # 未选场时只留分析卡倾向用到的平台；各家的线仍汇总在 market_signals 里
+            card = context["analysis"][context["events"][0]["id"]]
+            kept = {card["spread"]["book"], card["total"]["book"]}
+            self.assertEqual({b["key"] for b in context["events"][0]["bookmakers"]}, kept)
+            self.assertTrue(kept <= {"a", "b"})
+            self.assertEqual(context["market_signals"][context["events"][0]["id"]]["books"], 2)
             self.assertIn("独立", instructions)
             self.assertIn("15 分钟", instructions)
             self.assertTrue(instructions.startswith(chat_prompt.static_prompt().text))
@@ -311,7 +315,12 @@ class StreamTests(unittest.IsolatedAsyncioTestCase):
             response = await self.client.post("/api/v1/chat/stream", json=payload)
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.headers["content-type"].startswith("text/event-stream"))
-        self.assertEqual(sse_events(response.text), [("delta", {"text": "分"}), ("delta", {"text": "析"}), ("done", {"reply": "分析", "model": "test-model", "usage": None})])
+        events = sse_events(response.text)
+        # 分析卡在文字之前发出，只含问到的那场
+        self.assertEqual(events[0][0], "analysis")
+        self.assertEqual([card["away"] for card in events[0][1]["cards"]], ["Boston Celtics"])
+        self.assertIn(events[0][1]["cards"][0]["spread"]["confidence"], ("高", "中", "低"))
+        self.assertEqual(events[1:], [("delta", {"text": "分"}), ("delta", {"text": "析"}), ("done", {"reply": "分析", "model": "test-model", "usage": None})])
         self.assertIn('"focus":{"teams":["Boston Celtics"]', call.call_args.args[2])
 
     async def test_failure_after_start_is_error_event_and_lock_is_released(self):

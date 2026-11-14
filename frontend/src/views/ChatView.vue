@@ -9,6 +9,7 @@ import ChatTurn from '@/components/chat/ChatTurn.vue'
 import ChatWaiting from '@/components/chat/ChatWaiting.vue'
 import ChatWelcome from '@/components/chat/ChatWelcome.vue'
 import { MAX_QUESTIONS, SELECTION_MARK, type Turn } from '@/components/chat/types'
+import type { AnalysisCard } from '@/types/api'
 import SideDrawer from '@/components/common/SideDrawer.vue'
 import TraceLink from '@/components/logs/TraceLink.vue'
 import { demoTranscript } from '@/demo/transcript'
@@ -29,6 +30,8 @@ const pending = ref<Turn | null>(null)
 const startedAt = ref(0)
 /** 正在逐段收到的回答；完整完成前不进入聊天记录，失败时丢弃。 */
 const partial = ref('')
+/** 服务端在文字之前发来的分析卡；和 partial 一样，完整完成后才跟回答一起进入聊天记录。 */
+const liveCards = ref<AnalysisCard[]>([])
 /** 当前显示的是示例对话（没有调用模型），不能接着提问。 */
 const sample = ref(false)
 const contextOpen = ref(false)
@@ -87,14 +90,18 @@ async function send(): Promise<void> {
   pending.value = userTurn
   startedAt.value = Date.now()
   partial.value = ''
+  liveCards.value = []
   await scrollToEnd()
   try {
     const history = [...turns.value, userTurn].map(({ role, content }) => ({ role, content }))
     const result = await streamChat(history, model.status.timeout_seconds, selection ? { event_id: selection.event_id, bookmaker_key: selection.bookmaker_key } : null, (text) => {
       partial.value += text
       void followEnd()
+    }, (cards) => {
+      liveCards.value = cards
+      void followEnd()
     })
-    turns.value.push(userTurn, { role: 'assistant', content: result.reply, meta: { model: result.model, seconds: (Date.now() - startedAt.value) / 1000, usage: result.usage ?? null } })
+    turns.value.push(userTurn, { role: 'assistant', content: result.reply, analysis: liveCards.value.length ? liveCards.value : undefined, meta: { model: result.model, seconds: (Date.now() - startedAt.value) / 1000, usage: result.usage ?? null } })
   } catch (cause) {
     // 失败时把问题放回输入框，由用户决定是否重发；不自动重试。
     if (!input.value) input.value = question
@@ -104,6 +111,7 @@ async function send(): Promise<void> {
     loading.value = false
     pending.value = null
     partial.value = ''
+    liveCards.value = []
     await scrollToEnd()
   }
 }
@@ -164,8 +172,8 @@ onActivated(consumeSampleRequest)
           <ChatTurn v-for="(turn, index) in turns" :key="index" :turn="turn" />
           <template v-if="loading && pending">
             <ChatTurn :turn="pending" />
-            <ChatTurn v-if="partial" :turn="{ role: 'assistant', content: partial }" streaming />
-            <ChatWaiting v-else :elapsed-ms="Math.max(0, now - startedAt)" :timeout-seconds="model.status?.timeout_seconds ?? 0" />
+            <ChatTurn v-if="partial || liveCards.length" :turn="{ role: 'assistant', content: partial, analysis: liveCards }" streaming />
+            <ChatWaiting v-if="!partial" :elapsed-ms="Math.max(0, now - startedAt)" :timeout-seconds="model.status?.timeout_seconds ?? 0" />
           </template>
         </div>
       </div>

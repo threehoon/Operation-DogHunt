@@ -2,9 +2,9 @@
   "active": [
     "chat_role_v1",
     "chat_sources_v5",
-    "chat_odds_v7",
-    "chat_method_v7",
-    "chat_output_v5"
+    "chat_odds_v8",
+    "chat_method_v8",
+    "chat_output_v6"
   ],
   "files": {
     "chat_method_v1": {
@@ -35,6 +35,10 @@
       "sha256": "c1981ce1550f0733fbbad686e0329e898a997a6a542586f6e1c6f121d693df97",
       "chars": 1585
     },
+    "chat_method_v8": {
+      "sha256": "c3069b20788876404180fa16c3aa951ab3f8f8e981407a8ef301e54878b4cc4c",
+      "chars": 1072
+    },
     "chat_odds_v1": {
       "sha256": "f6bb72223b93d16fe2c42160c94cc296e9a6920a049517d1c3988f4edcddc363",
       "chars": 497
@@ -63,6 +67,10 @@
       "sha256": "031e59a4f3fc50b3234a57d4f97afd43334fc4b683c5f9480af8bd3ff70c13be",
       "chars": 3278
     },
+    "chat_odds_v8": {
+      "sha256": "8fa3371f5e961539dcaf2aed67354c29665f83b9f993c3dbcdcc4b3cd688a2f8",
+      "chars": 4113
+    },
     "chat_output_v1": {
       "sha256": "01a277d874cc285fa2e002ffaec13fbd961e03920983738842b0923e3f82958f",
       "chars": 749
@@ -82,6 +90,10 @@
     "chat_output_v5": {
       "sha256": "b119feacd32eed3a8d16f20d607bb2a166d03bd79f2f912f85655394e845cf85",
       "chars": 1982
+    },
+    "chat_output_v6": {
+      "sha256": "2a6ad3859600cc722863a1ee512bfbe2ab5d387dc1a8289e57e3b1e7768cc253",
+      "chars": 2192
     },
     "chat_role_v1": {
       "sha256": "c65aab4c4950e9a5a65af469c519d43dfc1e3e4fe2d65bb953fbdd4b7e676ec6",
@@ -108,6 +120,6 @@
       "chars": 864
     }
   },
-  "static_sha256": "c5b5be5727eb2bd2615a4d95a940cf040551f564dfcdf961fb00c100451d6ad0",
-  "static_chars": 7959
+  "static_sha256": "99b821c6f4865bea505b46ec7b918e7323186c251395e6bf2e029cee0b4a358b",
+  "static_chars": 8491
 }
