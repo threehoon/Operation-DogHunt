@@ -5,7 +5,7 @@ description: 维护首页聊天助手的提示词文件（backend/app/prompts/ch
 
 # 维护聊天提示词
 
-提示词改了就要留下记录：哪个版本、为什么改、改了什么。本 Skill 负责补齐这些记录，不决定提示词写什么。设计依据见 `docs/聊天预测提示词设计文档.md` 第 8、9 节。
+提示词改了就要留下记录：哪个版本、为什么改、改了什么。本 Skill 负责补齐这些记录，不决定提示词写什么。设计依据见 `docs/design/聊天预测提示词设计文档.md` 第 8、9 节。
 
 Skill 只在被调用时运行，不监听文件。漏记录的修改会让 `test_chat.py` 的 `test_repository_prompts_are_recorded` 失败，那时再调用即可。
 

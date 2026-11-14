@@ -22,6 +22,6 @@
 
 ## 文件夹管理
 
-- 新建文件、新增版本文件，或发现目录平铺过多、版本系列与记录混放时，使用 [$folder-organization](.agents/skills/folder-organization/SKILL.md) 决定放置位置或提出分组方案。项目目录约定以 [docs/项目目录说明.md](docs/项目目录说明.md) 和代码地图为准。
+- 新建文件、新增版本文件，或发现目录平铺过多、版本系列与记录混放时，使用 [$folder-organization](.agents/skills/folder-organization/SKILL.md) 决定放置位置或提出分组方案。项目目录约定以 [docs/guides/项目目录说明.md](docs/guides/项目目录说明.md) 和代码地图为准。
 - 移动或改名文件前先列出前后结构和需要同步的引用，等用户确认；完成后按上面的规则同步代码地图，涉及聊天提示词目录时同时走 `$chat-prompt-maintenance`。
 - 只新建单个文件且放在已有约定位置时，不需要整体扫描。

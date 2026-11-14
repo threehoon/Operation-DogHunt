@@ -30,7 +30,7 @@ API 是程序访问外部服务的通道；此工具通过 The Odds API 获取�
 - 输入：`THE_ODDS_API_KEY`；请求 NBA、美国地区 `us`、`spreads,totals`，十进制赔率。
 - 输出：`data/odds/<UTC时间>-<随机编号>/snapshot.json` 和 `odds.csv`；原始响应、整理记录、采集时间与额度信息分开保存。
 - 依赖：原脚本使用 Python 3 标准库和外部 The Odds API；网站通过 [后端适配层](../../backend/app/integrations/odds.py) 复用脚本，经 [盘口服务](../../backend/app/services/odds/board.py) 和 [路由](../../backend/app/api/routes/odds.py) 提供给 [前端卡片](../../frontend/src/components/odds/MatchBoard.vue)。
-- 使用入口与限制详见 [API 取数说明](../API取数使用说明.md)。
+- 使用入口与限制详见 [API 取数说明](../guides/API取数使用说明.md)。
 
 ## 已实现与缺口
 
