@@ -25,8 +25,8 @@ def _line_picker(market: str, signal: dict, event: OddsEvent, book: str | None):
     part = signal.get(market) or {}
 
     def line(side: str) -> tuple[float | None, str | None]:
-        if book and part.get("selected"):
-            point = part["selected"].get("home_point" if market == SPREAD else "point")
+        if book:
+            point = (part.get("selected") or {}).get("home_point" if market == SPREAD else "point")
             if market == SPREAD and side == event.away_team and point is not None:
                 point = -point
             return point, book
@@ -45,13 +45,16 @@ def analyze_event(event: OddsEvent, book: str | None, signal: dict, sections: di
     spread_part, total_part = signal.get(SPREAD) or {}, signal.get(TOTAL) or {}
     home_point, total = spread_part.get("consensus_home_point"), total_part.get("consensus")
     market_margin = -home_point if home_point is not None else None
+    # 共识有报价不代表所选平台也有；缺失时不能用其他平台的线代替。
+    spread_quoted = home_point is not None and (not book or bool(spread_part.get("selected")))
+    total_quoted = total is not None and (not book or bool(total_part.get("selected")))
     fetched = {name: _fetched(sections.get(key)) for name, key in
                (("schedule", "schedule_rest"), ("injuries", "injuries"), ("season", "season_strength"), ("team_stats", "team_efficiency"))}
     missing: list[str] = []
-    if home_point is None:
-        missing.append("让分报价")
-    if total is None:
-        missing.append("总分报价")
+    if not spread_quoted:
+        missing.append(f"{book} 让分报价" if book else "让分报价")
+    if not total_quoted:
+        missing.append(f"{book} 总分报价" if book else "总分报价")
     form = _section(sections.get("team_form"), event.id)
     rows = [
         factors.strength(home, away, market_margin, form, _section(sections.get("season_strength"), event.id), fetched, missing),
@@ -68,9 +71,9 @@ def analyze_event(event: OddsEvent, book: str | None, signal: dict, sections: di
     known = injuries.get("status") == "available" and not injuries.get("stale")
     card = Card(event.id, home, away, event.commence_time, book, home_point, total, rows, missing=missing,
                 sources={"odds": signal.get("movement", {}).get("latest_fetched_at"), **fetched})
-    card.spread = build_lean(SPREAD, [r for r in rows if r.market == SPREAD], home, away, market_margin,
+    card.spread = build_lean(SPREAD, [r for r in rows if r.market == SPREAD], home, away, market_margin if spread_quoted else None,
                              _line_picker(SPREAD, signal, event, book), known)
-    card.total = build_lean(TOTAL, [r for r in rows if r.market == TOTAL], home, away, total,
+    card.total = build_lean(TOTAL, [r for r in rows if r.market == TOTAL], home, away, total if total_quoted else None,
                             _line_picker(TOTAL, signal, event, book), known)
     return card
 

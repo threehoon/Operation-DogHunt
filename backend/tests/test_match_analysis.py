@@ -253,12 +253,16 @@ class LeanTests(unittest.TestCase):
 class SnapshotCardTests(unittest.TestCase):
     """用 S-001 + D-001 固定快照走完整的 payload，核对湖人对掘金那张卡。"""
 
-    def payload(self, selected=True, stats=None):
+    def payload(self, selected=True, stats=None, missing_market=None):
         from app.services.odds.injuries import load_injuries
         from app.services.odds.schedule import load_schedule
         folder = chat_prompt.CHAT_DIR / chat_prompt.EVAL_DIR / "snapshots"
         data = json.loads((folder / "D-001.json").read_text(encoding="utf-8"))
         snap = json.loads((folder / "S-001.json").read_text(encoding="utf-8"))
+        if missing_market:
+            event = next(e for e in snap["raw_events"] if e["id"] == snap["_eval"]["selection"]["event_id"])
+            book = next(b for b in event["bookmakers"] if b["key"] == snap["_eval"]["selection"]["bookmaker_key"])
+            book["markets"] = [m for m in book["markets"] if m["key"] != missing_market]
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             for name in ("schedule", "injuries"):
@@ -291,6 +295,22 @@ class SnapshotCardTests(unittest.TestCase):
             self.assertIsNone(card["book"])
             self.assertFalse([f for f in card["factors"] if f["key"] == "price"])
             self.assertLessEqual(card["spread"]["expected"][1] - card["spread"]["expected"][0], 6)
+
+    def test_selected_missing_market_does_not_borrow_another_book(self):
+        for market, lean, other, label in (("spreads", "spread", "total", "让分"), ("totals", "total", "spread", "总分")):
+            with self.subTest(market=market):
+                card = self.payload(missing_market=market)["analysis"]["s001-lal-den"]
+                self.assertEqual(card["book"], "draftkings")
+                self.assertIsNone(card[lean])
+                self.assertIn(f"draftkings {label}报价", card["missing"])
+                self.assertEqual(card[other]["book"], "draftkings")
+
+    def test_unselected_missing_market_can_use_available_book(self):
+        for market, lean in (("spreads", "spread"), ("totals", "total")):
+            with self.subTest(market=market):
+                card = self.payload(selected=False, missing_market=market)["analysis"]["s001-lal-den"]
+                self.assertIsNone(card["book"])
+                self.assertEqual(card[lean]["book"], "fanduel")
 
     def test_cache_hits_when_sources_unchanged(self):
         from app.services.match_analysis import cache

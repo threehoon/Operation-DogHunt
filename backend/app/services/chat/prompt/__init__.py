@@ -199,4 +199,3 @@ def main(argv: list[str] | None = None) -> int:
     except ChatPromptError as exc:
         print(f"失败：{exc}", file=sys.stderr)
         return 1
-

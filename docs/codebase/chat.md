@@ -8,7 +8,7 @@
 | 核对日期 | 2026-11-15（Asia/Shanghai） |
 | 核对范围 | `services/chat`（service、context、prompt 包）、`prompts/chat`（modules、records、eval、锁文件）、`services/match_analysis`、`/chat` 与 `/chat/stream` 路由、相关测试；前端只核对了分析卡的读取入口 |
 | 实现状态 | 已实现：聊天每次只读已保存数据，服务端先算分析卡，模型解释分析卡；一次只处理一个聊天请求；没有长期记忆 |
-| 验证程度 | 本轮运行验证：172 项离线测试和提示词自检通过；真实模型回归为 2026-11-15 历史记录，本轮未调用模型 |
+| 验证程度 | main 合并审查运行验证：177 项离线测试和提示词自检通过；真实模型回归为 2026-11-15 历史记录，本轮未调用模型 |
 
 ## 负责什么
 
@@ -35,7 +35,7 @@
 | [factors.py](../../backend/app/services/match_analysis/factors.py) | `strength`、`pace`、`rest`、`injury`、`movement`、`price` | 各项依据和阈值 |
 | [lean.py](../../backend/app/services/match_analysis/lean.py) | `pick_side`、`confidence`、`expected_range`、`build_lean` | 选边、信心、预计范围 |
 | [cache.py](../../backend/app/services/match_analysis/cache.py) | `MAX_CARDS`、`clear` | 进程内分析卡缓存 |
-| [test_chat.py](../../backend/tests/test_chat.py) / [test_match_analysis.py](../../backend/tests/test_match_analysis.py) | 42 项 / 40 项 | 离线测试 |
+| [test_chat.py](../../backend/tests/test_chat.py) / [test_match_analysis.py](../../backend/tests/test_match_analysis.py) | 42 项 / 42 项 | 离线测试 |
 
 ## 输入、输出和依赖
 
@@ -61,7 +61,7 @@
 
 ## 选哪几场比赛
 
-- 有选场：只看这一场。比赛不在当前快照 → 409“所选比赛已不在…”；平台不在 → 409。信号按所选平台算；共识用这场所有平台，报价只留所选平台。
+- 有选场：只看这一场。比赛不在当前快照 → 409“所选比赛已不在…”；平台不在 → 409。信号按所选平台算；共识用这场所有平台，报价只留所选平台。所选平台缺让分或总分时，对应分析卡倾向为 null，missing 标明平台和缺失玩法；不借用其他平台的线，另一玩法仍照常分析。
 - 没选场：`find_focus` 从最后一条用户消息认球队（`SELECTION_MARK = "\n\n本次选场："` 之后的文字不算）。
   - 认出球队：只看相关比赛，`focus` 写 teams、matched_events、total_events，认出球员时加 players。
   - 认不出、问“全部/整张/其他/哪几场”等（reason "wide"）、或只说“今晚/明天”等时间词（reason "time"）：看整张表，取开赛最早的 15 场（`DETAIL_EVENT_LIMIT`）。超出时写 `details_limit = {covered, total}`；reason 为 none 或 time 时写 `focus_note`。
@@ -124,6 +124,7 @@
 
 | 日期 | 方式或命令 | 实际结果与边界 |
 | --- | --- | --- |
+| 2026-11-15 | main 合并审查：`uv run --locked python -m unittest discover -s tests` 与提示词检查 | 177 项通过、提示词检查“通过”。新增 2 项测试，分别用子用例覆盖让分与总分缺失：选场时不跨平台补线，未选场时仍能采用其他平台报价；本轮未调用真实模型或刷新外部数据 |
 | 2026-11-15 | `cd backend && uv run --locked python -m unittest discover -s tests` | 本轮运行：175 项全部通过，其中 test_chat 42 项（流式首个事件为 analysis；发送中断开仍写存档并释放锁，去掉修复时该项失败），test_match_analysis 40 项 |
 | 2026-11-15 | `uv run --locked python -m app.services.chat.prompt check` | 本轮运行：通过 |
 | 2026-11-15 | 真实模型核心回归（medium，经 `service.prepare_stream`） | 历史记录：E-001/002/003/006/007/008/009/010/012 通过；E-006 改问“我觉得应该选湖人”；E-011 未跑；low 下 E-010 和“分析全部”内容一致 |
