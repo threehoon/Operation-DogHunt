@@ -2,7 +2,7 @@
 
 `compose.dev.yml` 在本机用 Docker 起四个容器：PostgreSQL（关系库）、Milvus standalone（向量库），以及 Milvus 依赖的 etcd（元数据）和 MinIO（段文件）。前后端仍在宿主机运行（`make backend`、`make frontend`）。方案与阶段进度见 [数据库与向量库接入开发文档](../docs/plans/2026-11-15-数据库与向量库接入开发文档.md)。
 
-当前状态：P2（2026-11-16）起后端连接 PostgreSQL：有 Alembic 迁移（目前只有空的基线 `0001`）和就绪检查 `GET /api/v1/health/storage`；还没有表，Milvus 也还不连接（P3、P4）。Postgres 停了后端照常启动，聊天和盘口不受影响，就绪检查显示 `degraded`。
+当前状态（2026-11-17）：后端连接 PostgreSQL（迁移到 `0002`，有五张记忆表和只读接口 `GET /api/v1/memory`）和 Milvus（`make memory-init` 建两个 v1 集合与别名），就绪检查 `GET /api/v1/health/storage` 报两者的真实状态。记忆还没有被聊天使用（P5 起）。Postgres 或 Milvus 停了后端照常启动，聊天和盘口不受影响，就绪检查显示 `degraded`。
 
 ## 一览
 
@@ -41,6 +41,9 @@
 | 停止（保留数据） | `make storage-down` | `docker compose --env-file backend/.env -f deploy/compose.dev.yml down` |
 | 迁移到最新版本 | `make db-migrate` | `(cd backend && uv run --locked alembic upgrade head)` |
 | 查看迁移版本 | `make db-current` | `(cd backend && uv run --locked alembic current)` |
+| 初始化 Milvus 集合、索引、别名 | `make memory-init` | `(cd backend && uv run --locked python -m app.services.memory init)` |
+| 写入固定父块目录 | `make memory-seed` | `(cd backend && uv run --locked python -m app.services.memory seed --parents)` |
+| 只读列出记忆 | — | `(cd backend && uv run --locked python -m app.services.memory list)`（加 `--all` 包含已忘记的） |
 | 回退一个版本 | — | `(cd backend && uv run --locked alembic downgrade -1)`（有数据时先按下文备份） |
 | 后端看存储状态 | — | `curl -fsS http://127.0.0.1:8000/api/v1/health/storage`（先 `make backend`） |
 
@@ -48,7 +51,25 @@
 - `make storage-check` 检查：四个容器 running 且 healthy；Postgres、Milvus 的端口只绑 `127.0.0.1`，etcd、MinIO 没发布；容器内 `pg_isready`；用 `backend/.env` 的密码经 TCP 登录执行 `SELECT 1`；宿主机能连 Postgres 端口；Milvus `/healthz` 返回 200、gRPC 端口能连。直接运行脚本时，全部通过退出码 0，有检查失败 1，没有 `.env`、密码为空或 Docker 没运行时 2；经 `make storage-check` 运行时，任何失败 make 都返回 2，要区分原因看输出或直接运行脚本。输出不含密码。
 - 变量读取和 Compose 一致：终端里设置的同名环境变量（哪怕为空）优先于 `backend/.env`；`.env` 里允许 `export` 前缀和未加引号值后的 ` # 注释`。
 - `down` 只删容器和网络，数据卷保留，下次 `up -d` 数据还在。
-- 迁移和后端读同一份 `backend/.env` 的 `DOGHUNT_DB_*`（连接串在程序里拼，不写进 `alembic.ini`）。新克隆或重置后先 `make storage-up` 再 `make db-migrate`。
+- 迁移和后端读同一份 `backend/.env` 的 `DOGHUNT_DB_*`（连接串在程序里拼，不写进 `alembic.ini`）。新克隆或重置后按顺序执行：`make storage-up` → `make db-migrate` → `make memory-seed` → `make memory-init`。
+
+## 记忆库初始化（`memory-seed`、`memory-init`）
+
+两条命令都可以重复执行，结果不变。
+
+- `make memory-seed`：把固定的五个父块（`output_pref`、`method_pref`、`team_focus`、`event_research`、`review_notes`）写进 Postgres。已有的不重复插入，输出形如 `父块目录：新建 0，更新标题 0，未变 5`。要先 `make db-migrate`；数据库连不上或没迁移时退出码 1。
+- `seed --samples` 另写 4 条开发样例子块（来源标“开发样例”），只用于开发和测试，`DOGHUNT_ENVIRONMENT=production` 时拒绝。目前没有删除命令，写进日常库前想清楚。
+- `make memory-init`：在 Milvus 里建 `doghunt_memory_child_v1`、`doghunt_memory_parent_v1` 两个集合、索引，load 后建别名 `doghunt_memory_child`、`doghunt_memory_parent`。已存在的部分只检查不改。退出码：
+
+  | 退出码 | 含义 | 处理 |
+  | --- | --- | --- |
+  | 0 | 成功（第二次执行会显示“已存在”“未变”） | — |
+  | 1 | Milvus 连不上或操作失败 | `make storage-check`；刚重启 Milvus 时会自动对 `node not match` 重试 6 次、每次等 10 秒，仍失败就过一会儿再执行 |
+  | 3 | 集合维度或字段与配置不一致，提示 `collection dim=X, config dim=Y` | 不会自动重建。确认 `DOGHUNT_EMBEDDING_DIM`；真要换维度，改 `DOGHUNT_MILVUS_COLLECTION_VERSION` 建新版本集合 |
+  | 4 | 别名已指向别的集合，没有改动 | 确认要切换时运行 `(cd backend && uv run --locked python -m app.services.memory init --force)`；旧集合保留 |
+
+  经 `make` 运行时，任何非 0 退出码 make 都返回 2，要区分原因看输出或直接运行命令。
+- 后端启动时会查一次 Milvus（最多等 1 秒），没执行 `memory-init` 时 `/health/storage` 的 `milvus.status` 是 `not_initialized`。
 
 ## 端口冲突
 
@@ -64,7 +85,7 @@
    DOGHUNT_MILVUS_HEALTH_PORT=29091
    ```
 
-   编排和 `make storage-check` 都读这三个变量；容器内部端口不变。后端（P2 起）读同一个 `DOGHUNT_DB_PORT`，Milvus 端口在 P4 接入；改完重启后端。
+   编排和 `make storage-check` 都读这三个变量；容器内部端口不变。后端读同一个 `DOGHUNT_DB_PORT`；Milvus 端口后端不读，改了 `DOGHUNT_MILVUS_PORT` 要同时把 `DOGHUNT_MILVUS_URI` 改成 `http://127.0.0.1:29530`；改完重启后端。
 
 ## 备份 Postgres
 
@@ -111,7 +132,8 @@ docker compose --env-file backend/.env -f deploy/compose.dev.yml \
 | `up` 报 `set DOGHUNT_DB_PASSWORD in backend/.env` | `backend/.env` 是否有非空的 `DOGHUNT_DB_PASSWORD` | 按“首次准备”填写 |
 | `failed to connect to the docker API` | Docker Desktop 是否在运行 | 启动 Docker Desktop 后重试 |
 | Milvus 一直 `starting` 或反复重启 | `docker compose ... logs --tail=200 milvus`；Docker Desktop 内存设置 | 内存给到 6 GB 以上；确认 etcd、MinIO 都是 healthy |
-| Milvus 刚重启后建表、删集合报 `node not match[expectedNodeID=…][actualNodeID=…]` | 是否刚 `stop`/`up` 过 Milvus | etcd 里旧节点的登记还没过期，等约 1 分钟再试；2026-11-16 实测重试后成功 |
+| Milvus 刚重启后建表、删集合报 `node not match[expectedNodeID=…][actualNodeID=…]` | 是否刚 `stop`/`up` 过 Milvus | etcd 里旧节点的登记还没过期，等约 1 分钟再试；2026-11-16 实测重试后成功。`make memory-init` 会自动重试约 1 分钟 |
+| `/health/storage` 里 `milvus.status` 是 `not_initialized` | 是否执行过 `make memory-init` | 执行它；别名建好后接口返回 `ok` |
 | `storage-check` 报 Postgres 登录失败 | 是否在第一次 `up` 之后改过 `DOGHUNT_DB_PASSWORD` | 改回原密码，或进库 `ALTER USER doghunt PASSWORD '...'`，或备份后重置 |
 | `storage-check` 报端口没绑在 127.0.0.1 | `compose.dev.yml` 的 `ports` 是否被改成 `0.0.0.0` 或省略了地址 | 改回 `127.0.0.1:`；Milvus 本机没有认证，Postgres 只有一个开发密码，都不能暴露到局域网 |
 | 拉取镜像失败 | `docker pull <镜像>` 的报错 | 换成 Milvus 官方 standalone 编排里同主版本、带 arm64 的 tag，并写回开发文档第 8.1 节 |

@@ -44,6 +44,21 @@ class Settings(BaseSettings):
     # 启动时做一次 SELECT 1（最多等 1 秒，失败只记 warning）；离线测试强制关闭。
     db_startup_check: bool = True
 
+    # 本机 Milvus standalone（开发文档第 8、12.2 节）。代码只用别名，集合名由别名前缀 + 版本号拼出，只在初始化时用。
+    # DOGHUNT_MILVUS_PORT / DOGHUNT_MILVUS_HEALTH_PORT 只给编排和 make storage-check 用，不进这里。
+    milvus_uri: str = "http://127.0.0.1:19530"
+    milvus_token: SecretStr = SecretStr("")  # 本机无认证；以后启用认证再填，启动时登记脱敏
+    milvus_db_name: str = "default"
+    milvus_child_alias: str = Field(default="doghunt_memory_child", pattern=r"^[A-Za-z_][A-Za-z0-9_]{0,200}$")
+    milvus_parent_alias: str = Field(default="doghunt_memory_parent", pattern=r"^[A-Za-z_][A-Za-z0-9_]{0,200}$")
+    milvus_timeout_seconds: float = Field(default=2, gt=0, le=60)
+    milvus_collection_version: str = Field(default="v1", pattern=r"^[A-Za-z0-9_]{1,32}$")
+    # 启动时连一次 Milvus 并按需 load（最多等 1 秒，失败只记 warning）；离线测试强制关闭。
+    milvus_startup_check: bool = True
+    vectorstore_provider: Literal["milvus", "fake"] = "milvus"
+    # 向量维度，必须与 Milvus 集合一致（BGE-M3 为 1024）；不一致时初始化报错退出，不自动重建。
+    embedding_dim: int = Field(default=1024, ge=1, le=32768)
+
     @property
     def database_url(self) -> SecretStr:
         override = self.database_url_override.get_secret_value().strip()

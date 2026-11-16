@@ -18,6 +18,7 @@ from unittest.mock import patch
 
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 from sqlalchemy import Column, ForeignKey, Integer, MetaData, String, Table, insert, select
@@ -260,13 +261,17 @@ class MigrationTests(unittest.TestCase):
             config.attributes["configure_logger"] = False
             root = logging.getLogger()
             level, handlers = root.level, list(root.handlers)
+            # 不写死版本号：新迁移加进来后仍检查“到 head → 退一步 → 回 head”。
+            script = ScriptDirectory.from_config(config)
+            head = script.get_current_head()
+            previous = script.get_revision(head).down_revision
             command.upgrade(config, "head")
             self.assertEqual((root.level, root.handlers), (level, handlers))  # 进程内迁移不改日志配置
-            self.assertEqual(db_session.check_database().revision, "0001")
+            self.assertEqual(db_session.check_database().revision, head)
             command.downgrade(config, "-1")
-            self.assertIsNone(db_session.check_database().revision)
+            self.assertEqual(db_session.check_database().revision, previous)
             command.upgrade(config, "head")
-            self.assertEqual(db_session.check_database().revision, "0001")
+            self.assertEqual(db_session.check_database().revision, head)
 
 
 class StorageHealthTests(unittest.TestCase):
@@ -283,7 +288,9 @@ class StorageHealthTests(unittest.TestCase):
         self.assertEqual(body["database"]["status"], "ok")
         self.assertIsNone(body["database"]["revision"])
         self.assertIsNone(body["database"]["error"])
-        self.assertEqual(body["milvus"]["status"], "not_implemented")
+        # 离线测试强制 provider=fake：如实标注 fake，不计入整体状态（真实 Milvus 的 ok/down 见 test_vectorstore.py）
+        self.assertEqual(body["milvus"]["status"], "fake")
+        self.assertEqual(body["milvus"]["provider"], "fake")
         self.assertEqual(body["embedding"]["status"], "not_implemented")
 
     def test_database_down_is_200_degraded_without_password(self):

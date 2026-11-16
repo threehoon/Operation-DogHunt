@@ -13,9 +13,11 @@ from app.core import applog
 from app.core.config import get_settings
 from app.core.trace_middleware import TraceMiddleware
 from app.db.session import check_database, dispose_engine, register_database_secrets
+from app.integrations.vectorstore import close_vector_store, get_vector_store, register_vectorstore_secrets
 
 logger = logging.getLogger(__name__)
 STARTUP_DB_CHECK_SECONDS = 1
+STARTUP_MILVUS_CHECK_SECONDS = 1
 
 
 def _register_known_secrets() -> None:
@@ -29,6 +31,7 @@ def _register_known_secrets() -> None:
     except ValueError:
         pass
     register_database_secrets(settings)
+    register_vectorstore_secrets(settings)
     from app.integrations import balldontlie, dunkapi, local_keys
     for name in (balldontlie.KEY_NAME, dunkapi.KEY_NAME, "THE_ODDS_API_KEY"):
         try:
@@ -55,14 +58,41 @@ async def _startup_database_check() -> None:
                      ok=False, url=status.url, reason=status.error)
 
 
+async def _startup_milvus_check() -> None:
+    """启动时查一次 Milvus 别名、维度和加载状态，未 load 就尝试 load 一次（第 8.5 节）。
+
+    在线程里跑，最多等约 1 秒；连不上、未初始化、超时都只记 warning，不阻止启动，语义召回自行降级。
+    provider=fake 或 DOGHUNT_MILVUS_STARTUP_CHECK=false 时跳过。超时后线程会在后台跑完（受 Milvus 超时限制）。
+    """
+    settings = get_settings()
+    if not settings.milvus_startup_check or settings.vectorstore_provider != "milvus":
+        return
+    try:
+        status = await asyncio.wait_for(asyncio.to_thread(get_vector_store().ensure_loaded),
+                                        timeout=STARTUP_MILVUS_CHECK_SECONDS)
+    except TimeoutError:
+        applog.event(logger, "milvus.startup", f"Milvus {STARTUP_MILVUS_CHECK_SECONDS} 秒内没有响应，先不用语义召回启动",
+                     level=logging.WARNING, ok=False, reason="timeout")
+        return
+    if status.status == "ok":
+        applog.event(logger, "milvus.startup", f"Milvus 可用：{status.uri}", ok=True, uri=status.uri,
+                     collections=status.collections, ms=status.latency_ms)
+    else:
+        reason = status.error or status.detail
+        applog.event(logger, "milvus.startup", f"Milvus {status.status}，先不用语义召回启动：{reason}",
+                     level=logging.WARNING, ok=False, uri=status.uri, status=status.status, reason=reason)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     # 只有后端真正启动时才写日志文件和聊天存档；离线测试用 ASGITransport 不触发这里。
     _register_known_secrets()
     applog.configure_files()
     await _startup_database_check()
+    await _startup_milvus_check()
     yield
     dispose_engine()
+    close_vector_store()
     applog.shutdown_files()
 
 

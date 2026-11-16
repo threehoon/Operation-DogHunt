@@ -1,4 +1,4 @@
-.PHONY: help setup frontend backend build storage-up storage-down storage-ps storage-logs storage-check db-migrate db-current
+.PHONY: help setup frontend backend build storage-up storage-down storage-ps storage-logs storage-check db-migrate db-current memory-init memory-seed
 
 # 本机开发存储：密码从 backend/.env 读，项目名 doghunt-dev；用法见 deploy/README.md
 STORAGE_COMPOSE = docker compose --env-file backend/.env -f deploy/compose.dev.yml
@@ -15,6 +15,8 @@ help:
 	@echo "make storage-check  检查容器健康、端口只绑本机、数据库登录与 Milvus 健康"
 	@echo "make db-migrate     数据库迁移到最新版本（alembic upgrade head）"
 	@echo "make db-current     查看数据库当前迁移版本"
+	@echo "make memory-init    初始化 Milvus 集合、索引与别名（幂等；切换别名用 python -m app.services.memory init --force）"
+	@echo "make memory-seed    写入固定父块目录（幂等）"
 
 setup:
 	npm --prefix frontend ci
@@ -49,3 +51,9 @@ db-migrate:
 
 db-current:
 	cd backend && uv run --locked alembic current
+
+memory-init:
+	cd backend && uv run --locked python -m app.services.memory init
+
+memory-seed:
+	cd backend && uv run --locked python -m app.services.memory seed --parents

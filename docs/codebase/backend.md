@@ -5,15 +5,16 @@
 | 项目 | 当前记录 |
 | --- | --- |
 | 模块标识 | backend |
-| 核对日期 | 2026-11-16（Asia/Shanghai；P2 只核对了应用骨架、配置、健康检查与数据库相关部分） |
+| 核对日期 | 2026-11-17（Asia/Shanghai；P3、P4 只核对了路由注册、配置、启动、健康检查、记忆与向量库相关部分；其余行沿用 2026-11-16 及更早的核对） |
 | 核对范围 | 应用骨架（`main.py`、`core/config.py`、`api/router.py`）、健康检查和模型状态路由、`schemas/`、`integrations/llm.py`、预留目录、`pyproject.toml`、`.env.example`、`Makefile`；聊天、数据源、功能块、日志各自见下级子块；本机 `backend/.env` 的实际值未核对 |
-| 实现状态 | 部分实现：FastAPI 应用、健康检查（含存储就绪检查）、模型连接、聊天、盘口和后台取数、调用日志已实现；数据库连接与迁移框架已实现但还没有表；正式预测保存、记忆和通用任务框架只有预留目录 |
-| 验证程度 | 2026-11-16 本轮运行验证：208 项离线测试通过（4 项集成默认跳过），真实 Postgres 集成测试 4 项通过；真实模型和真实外部 API 只有历史记录，本轮未调用 |
+| 实现状态 | 部分实现：FastAPI 应用、健康检查（含存储就绪检查，Milvus 为真实状态）、模型连接、聊天、盘口和后台取数、调用日志已实现；数据库迁移到 `0002`（五张记忆表）、只读记忆接口和 Milvus 连接已实现；记忆召回与写入、正式预测保存和通用任务框架未实现 |
+| 验证程度 | 2026-11-17 本轮运行验证（P4 复核修复后，实现方运行的 `coding_check`）：302 项离线测试通过（10 项集成默认跳过），真实 Postgres 集成 6 项、真实 Milvus 集成 4 项通过；真实模型和真实外部 API 只有历史记录，本轮未调用 |
 
 ## 负责什么
 
 FastAPI 是提供后端接口的 Python 框架。后端提供：
-- 连通检查、存储就绪检查和模型状态；
+- 连通检查、存储就绪检查（PostgreSQL 与 Milvus）和模型状态；
+- 长期记忆的只读查询（P3，聊天还没用它）；
 - 经中转站调用模型的聊天；
 - 盘口快照读取和手动更新，以及更新后在后台补取赛程、伤病、实力和效率；
 - 调用日志查询。
@@ -27,24 +28,27 @@ FastAPI 是提供后端接口的 Python 框架。后端提供：
 | [功能块框架](blocks.md) | `services/analysis` 四层检查框架和实力块草稿（暂无调用入口） |
 | [调用日志](logs.md) | 调用编号、结构化日志、聊天存档、`/logs` 接口和前端查看页 |
 | [盘口取数工具](odds.md) | `scripts/fetch_nba_odds.py` 和 The Odds API 取数 |
-| [本机开发存储](storage.md) | `deploy/compose.dev.yml` 的 PostgreSQL + Milvus 容器、`make storage-*`、`scripts/check_storage.py`；后端的数据库连接（`db/`）、Alembic 迁移、`/health/storage` |
+| [本机开发存储](storage.md) | `deploy/compose.dev.yml` 的 PostgreSQL + Milvus 容器、`make storage-*`、`scripts/check_storage.py`；后端的数据库连接（`db/`）、Alembic 迁移、`/health/storage`；记忆表、仓储、`/memory` 接口、父块种子；向量库封装与 `make memory-init` |
 
 ## 到哪里找实现
 
 | 源码或配置 | 入口或关键符号 | 用途 |
 | --- | --- | --- |
-| [main.py](../../backend/app/main.py) | `create_app`、`lifespan`、`_register_known_secrets`、`_startup_database_check`、`app` | 创建应用，挂中间件和路由；启动时登记密钥（含数据库密码）、打开日志文件、做一次最多 1 秒的连库检查（见 [storage](storage.md)）；退出时释放连接池 |
-| [config.py](../../backend/app/core/config.py) | `Settings`、`get_settings`、`model_configured`、`database_url` | 读取基础配置、模型配置和数据库配置（`db_*` 字段见 [storage](storage.md)） |
-| [router.py](../../backend/app/api/router.py) | `api_router` | 注册 health、odds、chat、logs 四组路由 |
-| [routes/health.py](../../backend/app/api/routes/health.py) / [schemas/health.py](../../backend/app/schemas/health.py) | `GET /health`、`HealthResponse`；`GET /health/storage`、`StorageHealthResponse` | `/health` 返回 status "ok"、app、environment、version（`__version__ = "0.1.0"`），不查存储；`/health/storage` 见 [storage](storage.md) |
+| [main.py](../../backend/app/main.py) | `create_app`、`lifespan`、`_register_known_secrets`、`_startup_database_check`、`app` | 创建应用，挂中间件和路由；启动时登记密钥（含数据库密码、Milvus token）、打开日志文件、各做一次最多 1 秒的连库检查和 Milvus 检查（`_startup_milvus_check`，见 [storage](storage.md)）；退出时释放连接池并关闭向量库连接 |
+| [config.py](../../backend/app/core/config.py) | `Settings`、`get_settings`、`model_configured`、`database_url` | 读取基础配置、模型配置、数据库配置和 Milvus 配置（`db_*`、`milvus_*`、`vectorstore_provider`、`embedding_dim` 见 [storage](storage.md)） |
+| [router.py](../../backend/app/api/router.py) | `api_router` | 注册 health、odds、chat、logs、memory 五组路由 |
+| [routes/health.py](../../backend/app/api/routes/health.py) / [schemas/health.py](../../backend/app/schemas/health.py) | `GET /health`、`HealthResponse`；`GET /health/storage`、`StorageHealthResponse` | `/health` 返回 status "ok"、app、environment、version（`__version__ = "0.1.0"`），不查存储；`/health/storage`（数据库与 Milvus 真实状态）见 [storage](storage.md) |
 | [routes/chat.py](../../backend/app/api/routes/chat.py) | `GET /model`、`ModelStatus` | 返回是否已配置、模型名和超时秒数，不请求中转站；聊天路由见 [chat.md](chat.md) |
 | [schemas/chat.py](../../backend/app/schemas/chat.py) | `ChatMessage`、`OddsSelection`、`ChatRequest`、`ChatResponse` | 聊天请求和回复的字段限制 |
 | [schemas/odds.py](../../backend/app/schemas/odds.py) | `OddsBoard`、`OddsEvent`、`OddsBookmaker` | 来源、采集时间、新鲜度、比赛、平台、玩法、盘口和十进制赔率；不返回 Key 或路径 |
 | [llm.py](../../backend/app/integrations/llm.py) | `stream_model`、`request_model`、`TextDelta`、`ModelError` | 调用中转站的 Responses 流式接口 |
-| [pyproject.toml](../../backend/pyproject.toml) | `requires-python`、`dependencies` | Python 3.12 起；依赖 alembic（>=1.14,<2）、fastapi、httpx、jsonschema（>=4.23,<5）、psycopg[binary]（>=3.2,<4）、pydantic-settings、sqlalchemy（>=2.0.36,<2.1）、uvicorn；`[tool.uv] package = false`；具体版本见 uv.lock（2026-11-16 锁定 alembic 1.20.1、psycopg 3.3.9、sqlalchemy 2.0.57） |
-| [backend/.env.example](../../backend/.env.example) | `DOGHUNT_*` | 模型和基础配置示例；开发存储的密码、端口与数据库连接变量（见 [storage](storage.md)） |
-| [Makefile](../../Makefile) | `make setup`、`make backend`；`storage-*`、`db-migrate`、`db-current` 见 [storage](storage.md) | 安装依赖；在 127.0.0.1:8000 启动并自动重载 |
-| [models](../../backend/app/models/__init__.py)、[repositories](../../backend/app/repositories/__init__.py)、[tasks](../../backend/app/tasks/__init__.py)、[memory](../../backend/app/services/memory/__init__.py) | 只有文档字符串 | 预留目录 |
+| [routes/memory.py](../../backend/app/api/routes/memory.py) / [schemas/memory.py](../../backend/app/schemas/memory.py) | `GET /memory`、`GET /memory/children/{child_id}`；`MemoryTreeResponse` | 只读；返回 `{parents, children, log}`，字段对齐前端 `types/memory.ts`；数据库不可用 503，不存在 404；详情见 [storage](storage.md) |
+| [vectorstore.py](../../backend/app/integrations/vectorstore.py) | `get_vector_store`、`MilvusVectorStore`、`FakeVectorStore` | 向量库封装，业务代码只经它访问 Milvus；详情见 [storage](storage.md) |
+| [pyproject.toml](../../backend/pyproject.toml) | `requires-python`、`dependencies` | Python 3.12 起；依赖 alembic（>=1.14,<2）、fastapi、httpx、jsonschema（>=4.23,<5）、psycopg[binary]（>=3.2,<4）、pydantic-settings、pymilvus（>=2.5.18,<2.6）、sqlalchemy（>=2.0.36,<2.1）、uvicorn；`[tool.uv] package = false`；具体版本见 uv.lock（2026-11-16 锁定 alembic 1.20.1、psycopg 3.3.9、sqlalchemy 2.0.57；2026-11-17 锁定 pymilvus 2.5.18，连带 pandas、pyarrow、grpcio、milvus-lite、faiss-cpu 等，体积大） |
+| [backend/.env.example](../../backend/.env.example) | `DOGHUNT_*` | 模型和基础配置示例；开发存储的密码、端口、数据库连接变量与 Milvus 连接变量（见 [storage](storage.md)） |
+| [Makefile](../../Makefile) | `make setup`、`make backend`；`storage-*`、`db-migrate`、`db-current`、`memory-init`、`memory-seed` 见 [storage](storage.md) | 安装依赖；在 127.0.0.1:8000 启动并自动重载 |
+| [models](../../backend/app/models/__init__.py)、[repositories](../../backend/app/repositories/memory.py)、[services/memory](../../backend/app/services/memory/__main__.py) | 记忆表模型、仓储、父块目录、命令行与 Milvus 初始化（P3、P4） | 见 [storage](storage.md) |
+| [tasks](../../backend/app/tasks/__init__.py) | 只有文档字符串 | 预留目录 |
 
 ## 输入、输出和依赖
 
@@ -67,6 +71,7 @@ FastAPI 是提供后端接口的 Python 框架。后端提供：
   | model_timeout_seconds | 默认 120，范围 5–300 |
   | model_max_output_tokens | 默认 4096，范围 128–16384；思考 token 也计入 |
   | db_host、db_port、db_user、db_password、db_name 等 | 数据库连接，见 [storage](storage.md)；`DOGHUNT_DATABASE_URL` 可整体覆盖 |
+  | milvus_uri、milvus_token 等、vectorstore_provider、embedding_dim | Milvus 连接与维度，见 [storage](storage.md)；默认 `http://127.0.0.1:19530`、`milvus`、1024 |
 
   `get_settings` 有 lru_cache，改配置后要重启后端。
 - 模型配置在 `backend/.env`；三个数据源 Key 在根目录 `.env.local`（示例见根目录 [.env.example](../../.env.example)），两者互不读取。浏览器不持有任何 Key。
@@ -104,19 +109,20 @@ FastAPI 是提供后端接口的 Python 框架。后端提供：
 
 | 能力 | 当前情况 | 依据 |
 | --- | --- | --- |
-| 应用、健康检查、模型状态 | 已实现；`/health` 不查外部服务或存储，`/health/storage` 查 Postgres | `create_app`、`health`、`storage_health`、`model_status` |
+| 应用、健康检查、模型状态 | 已实现；`/health` 不查外部服务或存储，`/health/storage` 查 Postgres 和 Milvus | `create_app`、`health`、`storage_health`、`model_status` |
 | 模型连接 | 已实现，流式和完整返回两种 | `llm.py` |
 | 聊天、盘口与后台取数、调用日志 | 已实现，见下级子块 | [chat](chat.md)、[data-sources](data-sources.md)、[logs](logs.md) |
 | 功能块框架 | 部分实现，无调用入口 | [blocks](blocks.md) |
-| 数据库和持久化 | 部分实现：后端连 PostgreSQL、Alembic 空基线、存储就绪检查（[storage](storage.md)）；还没有表，Milvus 未连接 | `db/`、`migrations/`；`models`、`repositories` 仍只有文档字符串 |
+| 数据库和持久化 | 部分实现：PostgreSQL 迁移到 `0002`（五张记忆表）、仓储、只读记忆接口；Milvus 连接、集合初始化、健康检查（[storage](storage.md)）；向量还没有写入流程 | `db/`、`migrations/`、`models/memory.py`、`repositories/memory.py`、`vectorstore.py` |
 | 通用任务、超时恢复、定期维护 | 未实现；只有盘口更新后的后台线程，没有持久任务和失败恢复 | `tasks`、[data-sources](data-sources.md) |
-| 记忆和正式预测保存 | 未实现；对话不保存，刷新页面不能恢复 | `services/memory` |
+| 记忆召回、写入和正式预测保存 | 未实现；聊天不读也不写记忆，对话不保存，刷新页面不能恢复 | `services/chat/service.py` 没有调用记忆 |
 
 ## 验证记录
 
 | 日期 | 方式或命令 | 实际结果与边界 |
 | --- | --- | --- |
-| 2026-11-16 | `cd backend && uv run --locked python -m unittest discover -s tests`；集成测试见 [storage](storage.md) | 本轮运行：`Ran 208 tests / OK (skipped=4)`（新增 `test_db` 27 项，4 项集成默认跳过）；所有测试文件第一行导入 `_isolation`，不连真实库 |
+| 2026-11-17 | `cd backend && uv run --locked python -m unittest discover -s tests`（`coding_check` 的 `backend-offline-tests`）；集成测试见 [storage](storage.md) | 本轮运行：`Ran 302 tests / OK (skipped=10)`（新增 `test_memory_store` 29、`test_memory_api` 9、`test_vectorstore` 50 项；10 项集成默认跳过） |
+| 2026-11-16 | `cd backend && uv run --locked python -m unittest discover -s tests`；集成测试见 [storage](storage.md) | 历史：`Ran 208 tests / OK (skipped=4)`（新增 `test_db` 27 项，4 项集成默认跳过）；所有测试文件第一行导入 `_isolation`，不连真实库 |
 | 2026-11-15 | `cd backend && uv run --locked python -m unittest discover -s tests` | 历史：`Ran 172 tests / OK`（blocks 41、chat 41、data_sources 12、logs 18、match_analysis 40、odds 20）；全部离线，不调真实模型或外部 API |
 | 2026-11-15 | `uv run --locked python -m app.services.chat.prompt check` | 本轮运行：通过 |
 | 2026-11-14 | 聊天流断开修复：临时撤回修复跑新增 3 项，并用 `curl` 请求 8000 和 5173 的 `/chat/stream` | 历史记录：撤回后 3 项报错，恢复后通过；带 `::1/128` 的后端 0.1 秒内返回 503 error 事件。在干净环境下真实调用 3 次（medium，选场掘金 vs 鹈鹕 FanDuel）：首字 8.2–12.0 秒，总用时 26.5–31.3 秒，输入 5106 token |
@@ -131,8 +137,8 @@ FastAPI 是提供后端接口的 Python 框架。后端提供：
 - 并发限制只在单个进程内有效；盘口更新的锁和冷却也是。公网多进程部署前，需要另行设计认证和共享限流。
 - 超时后中转站可能仍已计费。代码默认 120 秒、思考强度 high。旧文档记录本机 `.env` 自 2026-11-14 起为 240 秒、medium，本轮未核对。
 - 运行环境里 `NO_PROXY` 含 `::1/128` 时，聊天会立即返回 503，要在去掉该项的终端里重启后端。在项目启动入口固定 NO_PROXY 的方案（见 [网络修正验证](../handoff/2026-11-14-网络修正验证与免费数据缺口.md)）尚未实施。
-- [routes/README.md](../../backend/app/api/routes/README.md) 只写了 health 和 chat，[tests/README.md](../../backend/tests/README.md) 仍提到 ESPN，都已过时（本次未改）。
-- 数据库接入按 [数据库与向量库接入开发文档](../plans/2026-11-15-数据库与向量库接入开发文档.md) 进行，P1、P2 已完成，下一步 P3 记忆表；生产部署、记忆和正式预测保存未实现。
+- [routes/README.md](../../backend/app/api/routes/README.md) 写了 health、chat、memory，没写 odds 和 logs；[tests/README.md](../../backend/tests/README.md) 仍提到 ESPN（本次未改）。
+- 数据库接入按 [数据库与向量库接入开发文档](../plans/2026-11-15-数据库与向量库接入开发文档.md) 进行，P1–P4 已完成（P3、P4 独立复核问题已修复并复查），下一步 P5 嵌入与召回；生产部署、记忆召回与写入和正式预测保存未实现。
 
 ## 历史
 
@@ -142,3 +148,4 @@ FastAPI 是提供后端接口的 Python 框架。后端提供：
 - 2026-11-14：`httpx.InvalidURL` 不属于 `RequestError`，原来没捕获，导致流式回复已发响应头后直接断开，前端一直等到超时。修复后返回 503，并且流开始后的任何意外异常都转成 error 事件（[交接](../handoff/2026-11-14-聊天超时排查与断连修复.md)）。
 - 2026-11-15：加调用日志（`lifespan`、`TraceMiddleware`、logs 路由）；聊天加服务端分析卡。本块拆成 chat、data-sources、blocks、logs 四个子块，原来按日期追加的增量小节合并为当前状态，历史保留在各子块的“历史”一节。
 - 2026-11-16：数据库接入 P2：加 SQLAlchemy、psycopg、Alembic，`db/` 连接与会话，`/health/storage`，启动连库检查，测试隔离扩展到数据库与记忆开关。
+- 2026-11-17：数据库接入 P3、P4：记忆表与迁移 `0002`、仓储、`/memory` 只读接口、父块种子；`pymilvus` 2.5.18、向量库封装、`make memory-init`、启动 Milvus 检查，`/health/storage` 报 Milvus 真实状态。

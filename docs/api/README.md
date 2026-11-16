@@ -2,7 +2,7 @@
 
 API 可以理解成程序之间的“服务窗口”：地址决定去哪里，请求方法和参数决定办什么事。本目录集中记录 Operation DogHunt 实际使用的接口，避免改了代码却漏改说明。
 
-核对日期：2026-11-16（Asia/Shanghai），本轮新增 `/api/v1/health/storage` 并改“本机开发存储”一节中 PostgreSQL 的接入状态（P2）；此前同日新增“本机开发存储”一节；其余各节为 2026-11-15 在 Git HEAD `ed9c1cf` 上的核对结果。本清单只核对实现和配置位置，未调用供应商，不代表接口当前联网可用。
+核对日期：2026-11-17（Asia/Shanghai），本轮新增 `/api/v1/memory` 两条只读接口（P3），`/health/storage` 的 Milvus 改为真实状态、Milvus 19530 改为后端已连接（P4）；2026-11-16 新增 `/api/v1/health/storage` 和“本机开发存储”一节；其余各节为 2026-11-15 在 Git HEAD `ed9c1cf` 上的核对结果。本清单只核对实现和配置位置，未调用供应商，不代表接口当前联网可用。
 
 ## 外部服务
 
@@ -43,7 +43,9 @@ Base URL 是服务的基础地址，Endpoint 是最终请求的具体地址。�
 | 方法 | 默认完整地址 | 用途 / 是否请求外部服务 | 源码 |
 | --- | --- | --- | --- |
 | `GET` | `http://127.0.0.1:8000/api/v1/health` | 检查后端能否响应；不检查供应商连通 | [health.py](../../backend/app/api/routes/health.py) |
-| `GET` | `http://127.0.0.1:8000/api/v1/health/storage` | 存储就绪检查：PostgreSQL 执行 `SELECT 1` 并读迁移版本；断库时仍 200，`status` 为 `degraded`；连接串去掉密码；Milvus、嵌入暂标 `not_implemented`（P4、P5）；前端暂未调用 | 同上、[session.py](../../backend/app/db/session.py) 的 `check_database` |
+| `GET` | `http://127.0.0.1:8000/api/v1/health/storage` | 存储就绪检查：PostgreSQL 执行 `SELECT 1` 并读迁移版本；Milvus 查别名、维度和加载状态（P4，`milvus` 字段为 `MilvusHealth`：`status` 为 `ok` / `down` / `not_initialized` / `fake`，另有 `provider`、去账号密码的 `uri`、`latency_ms`、`collections`、`dim`、`error`、`detail`）；嵌入暂标 `not_implemented`（P5）。存储断开时仍 200，`database=down` 或 `milvus` 为 `down`/`not_initialized` 时整体 `degraded`；Milvus 被停止（连接被拒）时立即返回（实测约 0.005 秒），不响应时最多等 `DOGHUNT_MILVUS_TIMEOUT_SECONDS`（默认 2 秒），连不上后 5 秒内直接报 `down`；连接串和地址不带密码；前端暂未调用 | 同上、[session.py](../../backend/app/db/session.py) 的 `check_database`、[vectorstore.py](../../backend/app/integrations/vectorstore.py) 的 `check` |
+| `GET` | `http://127.0.0.1:8000/api/v1/memory` | 长期记忆只读列表（P3），返回 `{parents, children, log}`，字段对齐前端 `types/memory.ts`。Query：`include_forgotten`（默认 false）、`status`（可重复，六个状态值）、`parent_id`、`limit`（默认 200，1–500）、`offset`（≥0）、`log_limit`（默认 50，1–200）；参数非法 422，数据库不可用或未迁移 503；只读本机 PostgreSQL，前端暂未调用 | [memory.py](../../backend/app/api/routes/memory.py) |
+| `GET` | `http://127.0.0.1:8000/api/v1/memory/children/{child_id}` | 一条记忆子块，已忘记的也返回（`forgottenAt` 非空）；不存在 404，数据库不可用 503 | 同上 |
 | `GET` | `http://127.0.0.1:8000/api/v1/model` | 检查模型配置是否齐全；不调用模型 | [chat.py](../../backend/app/api/routes/chat.py) |
 | `POST` | `http://127.0.0.1:8000/api/v1/chat` | 等完整回答后返回；调用模型，可能计费 | 同上 |
 | `POST` | `http://127.0.0.1:8000/api/v1/chat/stream` | 逐段返回回答；调用模型，可能计费 | 同上 |
@@ -54,16 +56,16 @@ Base URL 是服务的基础地址，Endpoint 是最终请求的具体地址。�
 | `GET` | `http://127.0.0.1:8000/api/docs` | 自动生成的接口说明页面 | [main.py](../../backend/app/main.py) |
 | `GET` | `http://127.0.0.1:8000/api/openapi.json` | OpenAPI：供程序读取的接口格式说明 | 同上 |
 
-所有经过后端的响应都带 `X-Trace-Id` 响应头（调用编号，由 [trace_middleware.py](../../backend/app/core/trace_middleware.py) 生成，`/api/v1/logs` 除外），前端报错提示据此链接到 `/logs?trace=编号` 页面。接口总前缀由 `main.create_app` 的 `/api/v1` 决定，具体路由由 [api/router.py](../../backend/app/api/router.py) 注册。前端调用位置：[client.ts](../../frontend/src/api/client.ts)、[chat.ts](../../frontend/src/api/chat.ts)、[health.ts](../../frontend/src/api/health.ts)、[odds.ts](../../frontend/src/api/odds.ts)。当前没有单独暴露的伤病、球队效率、正式预测、长期记忆或统计后端 API，不要按页面名称猜造地址。
+所有经过后端的响应都带 `X-Trace-Id` 响应头（调用编号，由 [trace_middleware.py](../../backend/app/core/trace_middleware.py) 生成，`/api/v1/logs` 除外），前端报错提示据此链接到 `/logs?trace=编号` 页面。接口总前缀由 `main.create_app` 的 `/api/v1` 决定，具体路由由 [api/router.py](../../backend/app/api/router.py) 注册。前端调用位置：[client.ts](../../frontend/src/api/client.ts)、[chat.ts](../../frontend/src/api/chat.ts)、[health.ts](../../frontend/src/api/health.ts)、[odds.ts](../../frontend/src/api/odds.ts)。当前没有单独暴露的伤病、球队效率、正式预测或统计后端 API；长期记忆只有上表两条只读接口，编辑、停用、忘记、恢复接口还没有（P6.4/P7），不要按页面名称猜造地址。
 
 ## 本机开发存储（Docker）
 
-P1（2026-11-16）起，[deploy/compose.dev.yml](../../deploy/compose.dev.yml) 在本机起数据库和向量库，用法见 [deploy/README.md](../../deploy/README.md)。P2（2026-11-16）起后端连接 PostgreSQL（`DOGHUNT_DB_HOST`、`DOGHUNT_DB_PORT`、`DOGHUNT_DB_USER`、`DOGHUNT_DB_PASSWORD`、`DOGHUNT_DB_NAME` 拼成 `postgresql+psycopg://` 连接串，`DOGHUNT_DATABASE_URL` 可整体覆盖，测试用它指向临时 SQLite）；Milvus 还不连接（P4）。端口只绑 `127.0.0.1`；括号里是端口冲突时可改的变量，写在 `backend/.env`。
+P1（2026-11-16）起，[deploy/compose.dev.yml](../../deploy/compose.dev.yml) 在本机起数据库和向量库，用法见 [deploy/README.md](../../deploy/README.md)。P2（2026-11-16）起后端连接 PostgreSQL（`DOGHUNT_DB_HOST`、`DOGHUNT_DB_PORT`、`DOGHUNT_DB_USER`、`DOGHUNT_DB_PASSWORD`、`DOGHUNT_DB_NAME` 拼成 `postgresql+psycopg://` 连接串，`DOGHUNT_DATABASE_URL` 可整体覆盖，测试用它指向临时 SQLite）。P4（2026-11-17）起后端连接 Milvus：地址 `DOGHUNT_MILVUS_URI`（默认 `http://127.0.0.1:19530`），可选 `DOGHUNT_MILVUS_TOKEN`（本机无认证，留空）、`DOGHUNT_MILVUS_DB_NAME`；代码只用别名 `DOGHUNT_MILVUS_CHILD_ALIAS` / `DOGHUNT_MILVUS_PARENT_ALIAS`，集合名为 `<别名>_<DOGHUNT_MILVUS_COLLECTION_VERSION>`，由 `make memory-init` 创建；`DOGHUNT_VECTORSTORE_PROVIDER=fake` 时不连 Milvus。端口只绑 `127.0.0.1`；括号里是端口冲突时可改的变量，写在 `backend/.env`。
 
 | 服务 | 默认地址 | 用途 | 谁在用 |
 | --- | --- | --- | --- |
-| PostgreSQL | `127.0.0.1:5432`（`DOGHUNT_DB_PORT`），库名与用户 `doghunt`，密码 `DOGHUNT_DB_PASSWORD` | 关系库，计划存记忆正文、状态和以后的预测记录；P2 只有空的基线迁移 `0001` | [check_storage.py](../../scripts/check_storage.py)；后端 [session.py](../../backend/app/db/session.py)、`/health/storage`、Alembic（[env.py](../../backend/migrations/env.py)） |
-| Milvus gRPC | `127.0.0.1:19530`（`DOGHUNT_MILVUS_PORT`） | 向量库，计划存记忆向量；本机无认证 | 同上；后端 P4 接入，计划读 `DOGHUNT_MILVUS_URI`（默认 `http://127.0.0.1:19530`） |
+| PostgreSQL | `127.0.0.1:5432`（`DOGHUNT_DB_PORT`），库名与用户 `doghunt`，密码 `DOGHUNT_DB_PASSWORD` | 关系库，存记忆正文和状态（P3 起五张记忆表，迁移 `0002`），以后存预测记录 | [check_storage.py](../../scripts/check_storage.py)；后端 [session.py](../../backend/app/db/session.py)、`/health/storage`、`/memory`、Alembic（[env.py](../../backend/migrations/env.py)）、`python -m app.services.memory seed/list` |
+| Milvus gRPC | `127.0.0.1:19530`（`DOGHUNT_MILVUS_PORT`） | 向量库，存记忆向量（P4 起有两个空的 v1 集合和别名，写入在 P5/P6）；本机无认证 | 同上；后端 [vectorstore.py](../../backend/app/integrations/vectorstore.py)（读 `DOGHUNT_MILVUS_URI`，默认 `http://127.0.0.1:19530`）：启动检查、`/health/storage`、`make memory-init`（[vector_init.py](../../backend/app/services/memory/vector_init.py)） |
 | Milvus 健康检查 | `GET http://127.0.0.1:9091/healthz`（`DOGHUNT_MILVUS_HEALTH_PORT`） | 返回 `OK` 表示服务就绪 | 编排健康检查、`make storage-check` |
 
 etcd（2379）和 MinIO（9000、控制台 9001）只在容器网络内，不发布到宿主机。
@@ -78,7 +80,7 @@ etcd（2379）和 MinIO（9000、控制台 9001）只在容器网络内，不发
 | 体育供应商域名、版本、路径或工具名 | `scripts/fetch_nba_odds.py`、对应 `integrations/` 及 `services/odds/` 调用方、本清单；有行为变化再更新相关代码地图 |
 | 后端路由、总前缀、接口说明地址 | `main.py`、`api/router.py`、`api/routes/`、`frontend/src/api/`、本清单与 README 中的使用示例 |
 | 后端主机、端口或前端代理目标 | 实际启动配置、`frontend/vite.config.ts`、`frontend/.env.local`、示例配置、本清单与 README；区分默认值和本机覆盖值 |
-| 本机数据库或 Milvus 端口 | `deploy/compose.dev.yml`、`backend/.env.example`、`scripts/check_storage.py`、`deploy/README.md`、本清单与本机地址文件；P2/P4 后再加 `config.py` |
+| 本机数据库或 Milvus 端口 | `deploy/compose.dev.yml`、`backend/.env.example`、`scripts/check_storage.py`、`deploy/README.md`、`config.py`（`db_port`、`milvus_uri`）、本清单与本机地址文件；改 `DOGHUNT_MILVUS_PORT` 要同步改 `DOGHUNT_MILVUS_URI` |
 | 新增、停用或替换供应商 | 更新“外部服务”状态及配置入口；同步检查在用调用方，历史交接保留原貌 |
 
 Skill 是 AI 执行任务时遵循的维护流程，不是后台监听器。手动改地址后，可说“用 `$api-address-maintenance` 核对并同步 API 文档”；供应商自行改地址也不会被自动发现，需在收到通知或排查时核对。
@@ -93,6 +95,7 @@ Skill 是 AI 执行任务时遵循的维护流程，不是后台监听器。手�
 
 | 日期 | 变化 | 依据与验证边界 |
 | --- | --- | --- |
+| 2026-11-17 | P3：新增 `GET /api/v1/memory`、`GET /api/v1/memory/children/{child_id}`；P4：`/health/storage` 的 `milvus` 改为真实状态（`MilvusHealth`），后端开始连接 Milvus 19530（`DOGHUNT_MILVUS_URI` 等变量） | 对照 `router.py`、`routes/memory.py`、`schemas/memory.py`、`routes/health.py`、`schemas/health.py`、`config.py`、`vectorstore.py`、`.env.example`；离线 302 项与两组集成测试通过（`coding_check`，P4 复核修复后）；8010 端口实测（实现方报告）：`/memory` 200、`/children/nope` 404、`/health/storage` ok 且不含密码，停 Milvus 时 200 + `degraded`、约 0.005 秒；前端未调用；没有新增外部服务 |
 | 2026-11-16 | P2：新增 `GET /api/v1/health/storage`；后端开始连接 PostgreSQL，连接变量 `DOGHUNT_DB_*` / `DOGHUNT_DATABASE_URL` | 对照 `router.py`、`routes/health.py`、`config.py`、`db/session.py`；本机 8010 端口实测：库在时 `status=ok`、`revision=0001`，停 Postgres 后 HTTP 200 + `degraded`，两次响应和日志都不含密码；前端未调用 |
 | 2026-11-16 | 新增本机开发存储：PostgreSQL 5432、Milvus 19530 与 9091 健康检查 | P1 实际起容器核对：`make storage-check` 通过，三个端口只绑 127.0.0.1；后端尚未接入；没有改动外部服务和后端路由 |
 | 2026-11-15 | 新增调用日志两个只读接口与 `X-Trace-Id` 响应头 | 本机后端实测返回响应头，两个接口浏览器读取正常；没有新增或改动外部服务地址 |

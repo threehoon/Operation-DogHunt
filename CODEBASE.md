@@ -1,17 +1,17 @@
 # Operation DogHunt｜代码现状总览
 
-这是一个以聊天为入口的 NBA 分析项目。“比赛与盘口”有独立页面，可查看已开盘比赛、北京时间、让分与大小分，手动更新报价。聊天每次读取最新保存的盘口，也可从比赛卡片选择单场、单平台再追问；服务端先按固定规则给每场比赛算一张分析卡（倾向、把握、预计范围），网页在模型文字之前显示，模型负责解释；预测记录与效果统计已统一为深色控制台，共用明确标注的沙盘联赛演示记录、筛选与计算，支持记录详情、CSV 导出和统计图表；设置支持本机显示偏好保存与只读运行检查。前端另有写实风格的 3D 启动页和 3v3 沙盘比赛原型。正式保存、赛果结算、汇总分析、真实统计和长期记忆待实现。
+这是一个以聊天为入口的 NBA 分析项目。“比赛与盘口”有独立页面，可查看已开盘比赛、北京时间、让分与大小分，手动更新报价。聊天每次读取最新保存的盘口，也可从比赛卡片选择单场、单平台再追问；服务端先按固定规则给每场比赛算一张分析卡（倾向、把握、预计范围），网页在模型文字之前显示，模型负责解释；预测记录与效果统计已统一为深色控制台，共用明确标注的沙盘联赛演示记录、筛选与计算，支持记录详情、CSV 导出和统计图表；设置支持本机显示偏好保存与只读运行检查。前端另有写实风格的 3D 启动页和 3v3 沙盘比赛原型。后端已有长期记忆的表、只读接口和 Milvus 连接，但聊天还不读写记忆；正式保存、赛果结算、汇总分析、真实统计和记忆召回待实现。
 父块像一本书的目录：先在这里看各部分做到哪，再进入子块找具体代码。这里的文档描述开发项目；产品内部计划中的“父子块记忆”是另一项尚未实现的功能。
 
 ## 这份文档核对到哪里
 
 | 项目 | 当前记录 |
 | --- | --- |
-| 最近核对 | 2026-11-16（Asia/Shanghai） |
-| 核对范围 | 2026-11-16 数据库接入 P2：后端 `db/`、`config.py` 数据库字段、`main.py` 启动检查、`/health/storage`、`migrations/`、`Makefile` 的 `db-*`、测试隔离；更新 storage、backend 子块，其他模块未重新核对。之前同日 P1：新建 storage 子块（`deploy/`、`scripts/check_storage.py`、`make storage-*`），backend 子块只改了相关几行；其他模块未重新核对。上一次：2026-11-15 main 合并审查：核对 `73d2400..50f5355` 差异，重点为聊天分析卡、数据源、流式断连、日志权限与前端调用方；修复所选平台缺玩法时跨平台补线的问题，更新 chat 子块。此前阶段 4.4 的代码地图拆分和其他模块历史核对见各子块；未重新全量核对 |
+| 最近核对 | 2026-11-17（Asia/Shanghai） |
+| 核对范围 | 2026-11-17 数据库接入 P3、P4：后端 `models/memory.py`、迁移 `0002`、`repositories/memory.py`、`schemas/memory.py`、`routes/memory.py`、`router.py`、`services/memory/`（`parents.py`、`__main__.py`、`vector_init.py`）、`integrations/vectorstore.py`、`config.py` 的 Milvus 字段、`main.py` 的 Milvus 启动检查、`/health/storage`、测试隔离、`Makefile` 的 `memory-*`、`.env.example`、`pyproject.toml`/`uv.lock`；更新 storage、backend 子块，其他模块未重新核对。之前 2026-11-16 数据库接入 P2：后端 `db/`、`config.py` 数据库字段、`main.py` 启动检查、`/health/storage`、`migrations/`、`Makefile` 的 `db-*`、测试隔离；更新 storage、backend 子块，其他模块未重新核对。之前同日 P1：新建 storage 子块（`deploy/`、`scripts/check_storage.py`、`make storage-*`），backend 子块只改了相关几行；其他模块未重新核对。上一次：2026-11-15 main 合并审查：核对 `73d2400..50f5355` 差异，重点为聊天分析卡、数据源、流式断连、日志权限与前端调用方；修复所选平台缺玩法时跨平台补线的问题，更新 chat 子块。此前阶段 4.4 的代码地图拆分和其他模块历史核对见各子块；未重新全量核对 |
 | 最近全量核对 | 2026-11-11；覆盖当时已登记模块的代码与关键配置，不含依赖、生成产物和密钥文件 |
-| Git 基准 | 2026-11-16 P2 以 `dev` 的 `90b131c` 加未提交改动为基准；P1 以 `f528ea5` 加当时未提交改动为基准；此前 main 合并审查以 `50f5355` 为起点，确切合并与远程状态见最新交接 |
-| 运行验证 | 2026-11-16 P2：208 项离线测试通过（4 项集成默认跳过），`make storage-up` 起的真实 Postgres 上集成测试 4 项通过，日常库迁移往返、8010 端口停库启动实测；未调用真实模型或外部数据。P1：本机 Docker 实际起停四个存储容器，`make storage-check` 通过，后端 177 项离线测试通过；没有改后端代码。2026-11-15 main 合并审查：后端 177 项离线测试与 `prompt check` 通过，前端 `npm run build`（含类型检查，295 modules）通过，本轮没有调用真实模型或刷新外部数据。此前同日真实模型核心回归与浏览器分析卡验证为历史结果，见 chat、frontend 子块 |
+| Git 基准 | 2026-11-17 P3、P4 以 `dev` 的 `2f6eb9a`（P2 提交）加未提交改动为基准，未提交；2026-11-16 P2 以 `dev` 的 `90b131c` 加未提交改动为基准；P1 以 `f528ea5` 加当时未提交改动为基准；此前 main 合并审查以 `50f5355` 为起点，确切合并与远程状态见最新交接 |
+| 运行验证 | 2026-11-17 P3、P4：302 项离线测试通过（10 项集成默认跳过），真实 Postgres 集成 6 项、真实 Milvus 集成 4 项、`storage-check` 通过（P4 复核修复后实现方运行）；8010 端口停 Milvus 等实测为实现方报告；P3、P4 独立复核问题已修复并复查；未调用真实模型或外部数据。2026-11-16 P2：208 项离线测试通过（4 项集成默认跳过），`make storage-up` 起的真实 Postgres 上集成测试 4 项通过，日常库迁移往返、8010 端口停库启动实测；未调用真实模型或外部数据。P1：本机 Docker 实际起停四个存储容器，`make storage-check` 通过，后端 177 项离线测试通过；没有改后端代码。2026-11-15 main 合并审查：后端 177 项离线测试与 `prompt check` 通过，前端 `npm run build`（含类型检查，295 modules）通过，本轮没有调用真实模型或刷新外部数据。此前同日真实模型核心回归与浏览器分析卡验证为历史结果，见 chat、frontend 子块 |
 
 ## 父块：模块与完成情况
 
@@ -19,8 +19,8 @@
 | --- | --- | --- | --- |
 | 前端网站 | 用户看到的页面和操作入口（3D 启动页与比赛另见下一行） | 部分实现：真实模型聊天（逐段显示、先显示服务端分析卡）、比赛与盘口、运行状态与本机偏好可用；内页统一为安静的深色全息沙盘风格；预测记录、效果统计、长期记忆只有界面和明确标注的演示数据，正式保存、赛果与真实统计未实现 | [前端子块](docs/codebase/frontend.md) |
 | 3D 启动页与沙盘比赛 | `/welcome` 3D 指挥室和 3v3 街机篮球 | 部分实现：启动页与进入流程可用，比赛可打完一场（第三轮：身体对抗、协防掏球、完美出手必进）；不支持触屏，未经真人试玩 | [启动页与比赛子块](docs/codebase/frontend-game.md) |
-| 后端服务 | 应用骨架、配置、健康检查、模型连接 | 部分实现：health、`/health/storage`、模型状态、`llm.py` 中转连接（思考强度可配置，代码默认 `high`，本机 `.env` 记为 `medium`，未重新核对）；数据库连接与迁移框架已接上但还没有表；记忆、正式预测保存、通用任务框架只有预留目录 | [后端子块](docs/codebase/backend.md) |
-| 本机开发存储 | Docker 起 PostgreSQL + Milvus（含 etcd、MinIO），起停与检查 | 部分实现：`deploy/compose.dev.yml`（项目名 `doghunt-dev`，端口只绑本机）、`make storage-*`、`scripts/check_storage.py`（P1）；后端连 PostgreSQL、Alembic 空基线 `0001`、`make db-migrate`、`/health/storage`（P2），均在本机验证；记忆表、Milvus 集合未实现（P3、P4） [本机开发存储子块](docs/codebase/storage.md) |
+| 后端服务 | 应用骨架、配置、健康检查、模型连接 | 部分实现：health、`/health/storage`、模型状态、`llm.py` 中转连接（思考强度可配置，代码默认 `high`，本机 `.env` 记为 `medium`，未重新核对）；数据库迁移到 `0002`（五张记忆表）、只读接口 `/memory`、Milvus 连接与 `/health/storage` 真实状态已实现；聊天不读写记忆，正式预测保存、通用任务框架未实现 | [后端子块](docs/codebase/backend.md) |
+| 本机开发存储 | Docker 起 PostgreSQL + Milvus（含 etcd、MinIO），起停与检查 | 部分实现：`deploy/compose.dev.yml`（项目名 `doghunt-dev`，端口只绑本机）、`make storage-*`、`scripts/check_storage.py`（P1）；后端连 PostgreSQL、Alembic、`/health/storage`（P2）；五张记忆表（迁移 `0002`）、仓储、`GET /api/v1/memory`、`make memory-seed`（P3）；`pymilvus` 2.5.18、向量库封装、`make memory-init`、启动 Milvus 检查（P4），均在本机验证；嵌入、召回、写入、重建未实现（P5、P6） | [本机开发存储子块](docs/codebase/storage.md) |
 | 聊天与提示词 | 聊天接口、拼资料、分析卡、提示词版本 | 已实现：`/chat` 与 `/chat/stream`，同一时间只处理一个请求（忙时 429）；服务端先用 `match_analysis` 算分析卡，流式顺序 analysis → delta → done/error；提示词 role_v1、sources_v5、odds_v8、method_v8、output_v6（8491 字）；已知缺口：交给模型的原始分节还没精简，输入 tokens 比分析卡之前多 | [聊天子块](docs/codebase/chat.md) |
 | 外部数据与后台取数 | 盘口接口、更新后台取数、赛程比分与伤病效率 | 已实现：`/odds` 读快照与手动更新，更新后 `start_extras` 在后台取 BALLDONTLIE 赛程比分与整季比分、DunkAPI 伤病与球队效率，只用免费档；市场信号 | [外部数据子块](docs/codebase/data-sources.md) |
 | 功能块框架 | 功能块提示词的读取、检查与纠正 | 部分实现：四层检查和纠正一次可用，只有草稿实力块 strength_v2；`run_block` 没有调用方，结果不保存，从未用真实模型跑过 | [功能块子块](docs/codebase/blocks.md) |
@@ -52,8 +52,8 @@
 ## 重要缺口与未决事项
 
 - [前端](docs/codebase/frontend.md)：正式预测/复盘保存、赛果、真实统计、多人隔离和汇总分析待实现；旧版复盘填写/归档入口已退出当前路由。设置只持久保存本机显示偏好，不修改后台配置。用户已确认保留自动演示，并要求三页界面、数据与交互一起切换到深色方案。2026-11-14 的样式取向是本地按使用者要求定的，未经项目负责人或美术评审。手机实机及低性能设备未验证。
-- [后端](docs/codebase/backend.md)：其他联网工具、正式记录、记忆表和任务恢复未实现；数据库已连接但没有表。
-- [本机开发存储](docs/codebase/storage.md)：后端只接了 PostgreSQL（无表），Milvus 未接入，`/health/storage` 的 Milvus、嵌入固定为 `not_implemented`；Milvus v2.5.27；MinIO 镜像不是官方 2.5 编排原配（原 tag 已拉不到）；Milvus 重启后约 1 分钟内 DDL 可能报 `node not match`，需重试。
+- [后端](docs/codebase/backend.md)：其他联网工具、正式记录、记忆召回与写入和任务恢复未实现；记忆表和只读接口已有，聊天还没用。
+- [本机开发存储](docs/codebase/storage.md)：Milvus 两个 v1 集合是空的，没有写向量的流程；“Milvus 能从 Postgres 重建”要等 P6 `rebuild`；停用不写维护事件（P6.4 定）；嵌入在 `/health/storage` 仍是 `not_implemented`；Milvus 不响应时该接口最多等 `DOGHUNT_MILVUS_TIMEOUT_SECONDS`（被停止时立即返回）；pymilvus 自带日志不经 `applog` 脱敏（RPC 失败时含 `127.0.0.1:19530`，目前没有 token）；P4 复核遗留 4 个低问题（load 进度查询的重试、恢复后的重连退避、大集合 load 超时、上述日志）；Milvus v2.5.27；MinIO 镜像不是官方 2.5 编排原配（原 tag 已拉不到）；Milvus 重启后约 1 分钟内 DDL 可能报 `node not match`，需重试。
 - [聊天](docs/codebase/chat.md)：只读快照；被分析卡覆盖的原始分节仍交给模型，输入 tokens 没下降；回归用例 E-011 没跑过。
 - [功能块](docs/codebase/blocks.md)：提示词内容是草稿，角色与分析方法待定义；指标程序、批量运行和结果记录未实现，未做真实模型调用。
 - [调用日志](docs/codebase/logs.md)：多个后端进程同时写同一天的日志没有加锁；`/logs` 页顶部位置栏显示“未知位置”（`StatusStrip` 只认启动页模块列表）。
@@ -71,6 +71,7 @@
 
 | 日期 | 范围 | 主要变化 |
 | --- | --- | --- |
+| 2026-11-17 | 数据库接入 P3 记忆表、P4 Milvus 接入 | storage、backend 子块和本块：新增五张记忆表与迁移 `0002`、仓储、`GET /api/v1/memory`（含 `/children/{id}`）、固定父块种子 `make memory-seed`；`pymilvus` 2.5.18、`vectorstore.py` 封装与假实现、`make memory-init`、启动 Milvus 检查，`/health/storage` 报 Milvus 真实状态；302 项离线、6 项 Postgres 与 4 项 Milvus 集成测试通过；P3、P4 独立复核问题已修；未提交 |
 | 2026-11-16 | 数据库接入 P2 关系库与迁移 | storage、backend 子块和本块：新增 `db/`（懒加载 engine、`session_scope`、`UTCDateTime`）、`/health/storage`、Alembic 空基线与 `make db-migrate`，测试隔离扩展；208 项离线测试、4 项真实 Postgres 集成测试通过 |
 | 2026-11-16 | 数据库接入 P1 本地基础设施 | 新建 storage 子块，backend 子块改链接、Makefile、`.env.example` 与缺口几行，本块加一行模块与缺口；开发编排、检查脚本、`make storage-*` 本机实测通过，177 项离线测试通过；后端代码未改 |
 | 2026-11-15 | 推送前审查修正 | 只更新 chat、logs 子块和本块：网页在发送中断开时由 `ClosingStreamingResponse` 在请求内关闭事件流和模型流，存档不再丢失、模型锁立即释放；调用编号改用 fullmatch；进行中的聊天按步骤归为 chat；详情找到编号后不再读满 14 天；`backend_log.txt` 加进 `.gitignore`。175 项离线测试通过 |
