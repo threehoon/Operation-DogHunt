@@ -10,7 +10,7 @@
 | 最近核对 | 2026-11-17（Asia/Shanghai） |
 | 核对范围 | 2026-11-17 数据库接入 P3、P4：后端 `models/memory.py`、迁移 `0002`、`repositories/memory.py`、`schemas/memory.py`、`routes/memory.py`、`router.py`、`services/memory/`（`parents.py`、`__main__.py`、`vector_init.py`）、`integrations/vectorstore.py`、`config.py` 的 Milvus 字段、`main.py` 的 Milvus 启动检查、`/health/storage`、测试隔离、`Makefile` 的 `memory-*`、`.env.example`、`pyproject.toml`/`uv.lock`；更新 storage、backend 子块，其他模块未重新核对。之前 2026-11-16 数据库接入 P2：后端 `db/`、`config.py` 数据库字段、`main.py` 启动检查、`/health/storage`、`migrations/`、`Makefile` 的 `db-*`、测试隔离；更新 storage、backend 子块，其他模块未重新核对。之前同日 P1：新建 storage 子块（`deploy/`、`scripts/check_storage.py`、`make storage-*`），backend 子块只改了相关几行；其他模块未重新核对。上一次：2026-11-15 main 合并审查：核对 `73d2400..50f5355` 差异，重点为聊天分析卡、数据源、流式断连、日志权限与前端调用方；修复所选平台缺玩法时跨平台补线的问题，更新 chat 子块。此前阶段 4.4 的代码地图拆分和其他模块历史核对见各子块；未重新全量核对 |
 | 最近全量核对 | 2026-11-11；覆盖当时已登记模块的代码与关键配置，不含依赖、生成产物和密钥文件 |
-| Git 基准 | 2026-11-17 P3、P4 以 `dev` 的 `2f6eb9a`（P2 提交）加未提交改动为基准，未提交；2026-11-16 P2 以 `dev` 的 `90b131c` 加未提交改动为基准；P1 以 `f528ea5` 加当时未提交改动为基准；此前 main 合并审查以 `50f5355` 为起点，确切合并与远程状态见最新交接 |
+| Git 基准 | 2026-11-17 P3、P4 以 `dev` 的 `2f6eb9a`（P2 提交）加当时改动为基准，已提交 `8bc09cf` 并推送 `origin/dev`；2026-11-16 P2 以 `dev` 的 `90b131c` 加未提交改动为基准；P1 以 `f528ea5` 加当时未提交改动为基准；此前 main 合并审查以 `50f5355` 为起点，确切合并与远程状态见最新交接 |
 | 运行验证 | 2026-11-17 P3、P4：302 项离线测试通过（10 项集成默认跳过），真实 Postgres 集成 6 项、真实 Milvus 集成 4 项、`storage-check` 通过（P4 复核修复后实现方运行）；8010 端口停 Milvus 等实测为实现方报告；P3、P4 独立复核问题已修复并复查；未调用真实模型或外部数据。2026-11-16 P2：208 项离线测试通过（4 项集成默认跳过），`make storage-up` 起的真实 Postgres 上集成测试 4 项通过，日常库迁移往返、8010 端口停库启动实测；未调用真实模型或外部数据。P1：本机 Docker 实际起停四个存储容器，`make storage-check` 通过，后端 177 项离线测试通过；没有改后端代码。2026-11-15 main 合并审查：后端 177 项离线测试与 `prompt check` 通过，前端 `npm run build`（含类型检查，295 modules）通过，本轮没有调用真实模型或刷新外部数据。此前同日真实模型核心回归与浏览器分析卡验证为历史结果，见 chat、frontend 子块 |
 
 ## 父块：模块与完成情况
@@ -71,7 +71,7 @@
 
 | 日期 | 范围 | 主要变化 |
 | --- | --- | --- |
-| 2026-11-17 | 数据库接入 P3 记忆表、P4 Milvus 接入 | storage、backend 子块和本块：新增五张记忆表与迁移 `0002`、仓储、`GET /api/v1/memory`（含 `/children/{id}`）、固定父块种子 `make memory-seed`；`pymilvus` 2.5.18、`vectorstore.py` 封装与假实现、`make memory-init`、启动 Milvus 检查，`/health/storage` 报 Milvus 真实状态；302 项离线、6 项 Postgres 与 4 项 Milvus 集成测试通过；P3、P4 独立复核问题已修；未提交 |
+| 2026-11-17 | 数据库接入 P3 记忆表、P4 Milvus 接入 | storage、backend 子块和本块：新增五张记忆表与迁移 `0002`、仓储、`GET /api/v1/memory`（含 `/children/{id}`）、固定父块种子 `make memory-seed`；`pymilvus` 2.5.18、`vectorstore.py` 封装与假实现、`make memory-init`、启动 Milvus 检查，`/health/storage` 报 Milvus 真实状态；302 项离线、6 项 Postgres 与 4 项 Milvus 集成测试通过；P3、P4 独立复核问题已修；已提交 `8bc09cf` 并推送 `origin/dev` |
 | 2026-11-16 | 数据库接入 P2 关系库与迁移 | storage、backend 子块和本块：新增 `db/`（懒加载 engine、`session_scope`、`UTCDateTime`）、`/health/storage`、Alembic 空基线与 `make db-migrate`，测试隔离扩展；208 项离线测试、4 项真实 Postgres 集成测试通过 |
 | 2026-11-16 | 数据库接入 P1 本地基础设施 | 新建 storage 子块，backend 子块改链接、Makefile、`.env.example` 与缺口几行，本块加一行模块与缺口；开发编排、检查脚本、`make storage-*` 本机实测通过，177 项离线测试通过；后端代码未改 |
 | 2026-11-15 | 推送前审查修正 | 只更新 chat、logs 子块和本块：网页在发送中断开时由 `ClosingStreamingResponse` 在请求内关闭事件流和模型流，存档不再丢失、模型锁立即释放；调用编号改用 fullmatch；进行中的聊天按步骤归为 chat；详情找到编号后不再读满 14 天；`backend_log.txt` 加进 `.gitignore`。175 项离线测试通过 |
