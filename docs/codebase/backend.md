@@ -27,6 +27,7 @@ FastAPI 是提供后端接口的 Python 框架。后端提供：
 | [功能块框架](blocks.md) | `services/analysis` 四层检查框架和实力块草稿（暂无调用入口） |
 | [调用日志](logs.md) | 调用编号、结构化日志、聊天存档、`/logs` 接口和前端查看页 |
 | [盘口取数工具](odds.md) | `scripts/fetch_nba_odds.py` 和 The Odds API 取数 |
+| [本机开发存储](storage.md) | `deploy/compose.dev.yml` 的 PostgreSQL + Milvus 容器、`make storage-*`、`scripts/check_storage.py`；后端尚未连接 |
 
 ## 到哪里找实现
 
@@ -41,8 +42,8 @@ FastAPI 是提供后端接口的 Python 框架。后端提供：
 | [schemas/odds.py](../../backend/app/schemas/odds.py) | `OddsBoard`、`OddsEvent`、`OddsBookmaker` | 来源、采集时间、新鲜度、比赛、平台、玩法、盘口和十进制赔率；不返回 Key 或路径 |
 | [llm.py](../../backend/app/integrations/llm.py) | `stream_model`、`request_model`、`TextDelta`、`ModelError` | 调用中转站的 Responses 流式接口 |
 | [pyproject.toml](../../backend/pyproject.toml) | `requires-python`、`dependencies` | Python 3.12 起；依赖 fastapi、httpx、jsonschema（>=4.23,<5）、pydantic-settings、uvicorn；`[tool.uv] package = false`；具体版本见 uv.lock |
-| [backend/.env.example](../../backend/.env.example) | `DOGHUNT_*` | 模型和基础配置示例 |
-| [Makefile](../../Makefile) | `make setup`、`make backend` | 安装依赖；在 127.0.0.1:8000 启动并自动重载 |
+| [backend/.env.example](../../backend/.env.example) | `DOGHUNT_*` | 模型和基础配置示例；2026-11-16 加了开发存储的密码与端口变量，后端暂不读取（见 [storage](storage.md)） |
+| [Makefile](../../Makefile) | `make setup`、`make backend`；`storage-*` 见 [storage](storage.md) | 安装依赖；在 127.0.0.1:8000 启动并自动重载 |
 | [db](../../backend/app/db/__init__.py)、[models](../../backend/app/models/__init__.py)、[repositories](../../backend/app/repositories/__init__.py)、[tasks](../../backend/app/tasks/__init__.py)、[memory](../../backend/app/services/memory/__init__.py) | 只有文档字符串 | 预留目录 |
 
 ## 输入、输出和依赖
@@ -106,7 +107,7 @@ FastAPI 是提供后端接口的 Python 框架。后端提供：
 | 模型连接 | 已实现，流式和完整返回两种 | `llm.py` |
 | 聊天、盘口与后台取数、调用日志 | 已实现，见下级子块 | [chat](chat.md)、[data-sources](data-sources.md)、[logs](logs.md) |
 | 功能块框架 | 部分实现，无调用入口 | [blocks](blocks.md) |
-| 数据库和持久化 | 未选定数据库、未建表 | `db`、`models`、`repositories` |
+| 数据库和持久化 | 已选定 PostgreSQL + Milvus，本机开发容器已可起停（[storage](storage.md)）；后端未连接、未建表 | `db`、`models`、`repositories` 仍只有文档字符串 |
 | 通用任务、超时恢复、定期维护 | 未实现；只有盘口更新后的后台线程，没有持久任务和失败恢复 | `tasks`、[data-sources](data-sources.md) |
 | 记忆和正式预测保存 | 未实现；对话不保存，刷新页面不能恢复 | `services/memory` |
 
@@ -129,7 +130,7 @@ FastAPI 是提供后端接口的 Python 框架。后端提供：
 - 超时后中转站可能仍已计费。代码默认 120 秒、思考强度 high。旧文档记录本机 `.env` 自 2026-11-14 起为 240 秒、medium，本轮未核对。
 - 运行环境里 `NO_PROXY` 含 `::1/128` 时，聊天会立即返回 503，要在去掉该项的终端里重启后端。在项目启动入口固定 NO_PROXY 的方案（见 [网络修正验证](../handoff/2026-11-14-网络修正验证与免费数据缺口.md)）尚未实施。
 - [routes/README.md](../../backend/app/api/routes/README.md) 只写了 health 和 chat，[tests/README.md](../../backend/tests/README.md) 仍提到 ESPN，都已过时（本次未改）。
-- 数据库、生产部署、记忆和正式预测保存待定。
+- 数据库接入按 [数据库与向量库接入开发文档](../plans/2026-11-15-数据库与向量库接入开发文档.md) 进行，P1 本机容器已完成，下一步 P2；生产部署、记忆和正式预测保存未实现。
 
 ## 历史
 

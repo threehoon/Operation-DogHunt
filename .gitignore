@@ -28,6 +28,8 @@ data/app/
 *.log
 # 根目录的后端终端输出文件，不提交
 backend_log.txt
+# 数据库备份（pg_dump -Fc），含记忆正文，不提交
+*.dump
 
 # 本机 API 地址记录（不含 Key，仍避免公开私人中转地址）
 docs/api/local-addresses.local.md
