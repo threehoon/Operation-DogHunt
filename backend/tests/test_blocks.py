@@ -1,5 +1,6 @@
 """功能块框架的离线测试：文件自检、输入、结构、业务检查、拼装与纠正。不调用模型。"""
 
+import _isolation  # noqa: F401  先于任何 app 模块：测试库、日志目录与记忆开关（见 _isolation.py）
 import json
 import shutil
 import tempfile

@@ -2,7 +2,7 @@
 
 `compose.dev.yml` 在本机用 Docker 起四个容器：PostgreSQL（关系库）、Milvus standalone（向量库），以及 Milvus 依赖的 etcd（元数据）和 MinIO（段文件）。前后端仍在宿主机运行（`make backend`、`make frontend`）。方案与阶段进度见 [数据库与向量库接入开发文档](../docs/plans/2026-11-15-数据库与向量库接入开发文档.md)。
 
-当前状态：P1 只有容器和检查脚本；后端还不连接数据库或 Milvus（P2、P4 才接入），聊天和盘口不受这些容器影响。
+当前状态：P2（2026-11-16）起后端连接 PostgreSQL：有 Alembic 迁移（目前只有空的基线 `0001`）和就绪检查 `GET /api/v1/health/storage`；还没有表，Milvus 也还不连接（P3、P4）。Postgres 停了后端照常启动，聊天和盘口不受影响，就绪检查显示 `degraded`。
 
 ## 一览
 
@@ -39,11 +39,16 @@
 | 跟随日志 | `make storage-logs` | `docker compose --env-file backend/.env -f deploy/compose.dev.yml logs -f --tail=100` |
 | 只看 Milvus 日志 | — | `docker compose --env-file backend/.env -f deploy/compose.dev.yml logs --tail=200 milvus` |
 | 停止（保留数据） | `make storage-down` | `docker compose --env-file backend/.env -f deploy/compose.dev.yml down` |
+| 迁移到最新版本 | `make db-migrate` | `(cd backend && uv run --locked alembic upgrade head)` |
+| 查看迁移版本 | `make db-current` | `(cd backend && uv run --locked alembic current)` |
+| 回退一个版本 | — | `(cd backend && uv run --locked alembic downgrade -1)`（有数据时先按下文备份） |
+| 后端看存储状态 | — | `curl -fsS http://127.0.0.1:8000/api/v1/health/storage`（先 `make backend`） |
 
 - `up -d` 后 Milvus 要等 etcd、MinIO healthy 才启动，自身健康检查留了 90 秒启动期。看到 `starting` 先等，不要反复重启。
 - `make storage-check` 检查：四个容器 running 且 healthy；Postgres、Milvus 的端口只绑 `127.0.0.1`，etcd、MinIO 没发布；容器内 `pg_isready`；用 `backend/.env` 的密码经 TCP 登录执行 `SELECT 1`；宿主机能连 Postgres 端口；Milvus `/healthz` 返回 200、gRPC 端口能连。直接运行脚本时，全部通过退出码 0，有检查失败 1，没有 `.env`、密码为空或 Docker 没运行时 2；经 `make storage-check` 运行时，任何失败 make 都返回 2，要区分原因看输出或直接运行脚本。输出不含密码。
 - 变量读取和 Compose 一致：终端里设置的同名环境变量（哪怕为空）优先于 `backend/.env`；`.env` 里允许 `export` 前缀和未加引号值后的 ` # 注释`。
 - `down` 只删容器和网络，数据卷保留，下次 `up -d` 数据还在。
+- 迁移和后端读同一份 `backend/.env` 的 `DOGHUNT_DB_*`（连接串在程序里拼，不写进 `alembic.ini`）。新克隆或重置后先 `make storage-up` 再 `make db-migrate`。
 
 ## 端口冲突
 
@@ -59,7 +64,7 @@
    DOGHUNT_MILVUS_HEALTH_PORT=29091
    ```
 
-   编排和 `make storage-check` 都读这三个变量；容器内部端口不变。后端以后接入时（P2/P4）要用同样的端口，改完重启后端。
+   编排和 `make storage-check` 都读这三个变量；容器内部端口不变。后端（P2 起）读同一个 `DOGHUNT_DB_PORT`，Milvus 端口在 P4 接入；改完重启后端。
 
 ## 备份 Postgres
 

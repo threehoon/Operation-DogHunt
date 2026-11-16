@@ -1,5 +1,6 @@
 """离线验证，不读取真实模型配置，不调用外部付费接口。"""
 
+import _isolation  # noqa: F401  先于任何 app 模块：测试库、日志目录与记忆开关（见 _isolation.py）
 import asyncio
 import json
 import re

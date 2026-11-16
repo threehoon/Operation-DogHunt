@@ -1,5 +1,6 @@
 """比赛分析层：门槛（含恰好等于门槛）、新伤病三种情况、小样本、理由优先顺序、把握分档和预计范围。"""
 
+import _isolation  # noqa: F401  先于任何 app 模块：测试库、日志目录与记忆开关（见 _isolation.py）
 import json
 import tempfile
 import unittest

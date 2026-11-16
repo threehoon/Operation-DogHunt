@@ -1,4 +1,4 @@
-.PHONY: help setup frontend backend build storage-up storage-down storage-ps storage-logs storage-check
+.PHONY: help setup frontend backend build storage-up storage-down storage-ps storage-logs storage-check db-migrate db-current
 
 # 本机开发存储：密码从 backend/.env 读，项目名 doghunt-dev；用法见 deploy/README.md
 STORAGE_COMPOSE = docker compose --env-file backend/.env -f deploy/compose.dev.yml
@@ -13,6 +13,8 @@ help:
 	@echo "make storage-ps     查看存储容器状态"
 	@echo "make storage-logs   跟随存储容器日志（Ctrl+C 退出）"
 	@echo "make storage-check  检查容器健康、端口只绑本机、数据库登录与 Milvus 健康"
+	@echo "make db-migrate     数据库迁移到最新版本（alembic upgrade head）"
+	@echo "make db-current     查看数据库当前迁移版本"
 
 setup:
 	npm --prefix frontend ci
@@ -41,3 +43,9 @@ storage-logs:
 
 storage-check:
 	cd backend && uv run --locked python ../scripts/check_storage.py
+
+db-migrate:
+	cd backend && uv run --locked alembic upgrade head
+
+db-current:
+	cd backend && uv run --locked alembic current

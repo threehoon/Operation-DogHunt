@@ -1,5 +1,6 @@
 """整季比分实力分（BALLDONTLIE）、球队效率（DunkAPI）与额度账本；不访问真实接口，Key 用假值。"""
 
+import _isolation  # noqa: F401  先于任何 app 模块：测试库、日志目录与记忆开关（见 _isolation.py）
 import json
 import tempfile
 import unittest

@@ -2,7 +2,7 @@
 
 API 可以理解成程序之间的“服务窗口”：地址决定去哪里，请求方法和参数决定办什么事。本目录集中记录 Operation DogHunt 实际使用的接口，避免改了代码却漏改说明。
 
-核对日期：2026-11-16（Asia/Shanghai），本轮只新增“本机开发存储”一节；其余各节为 2026-11-15 在 Git HEAD `ed9c1cf` 上的核对结果。本清单只核对实现和配置位置，未调用供应商，不代表接口当前联网可用。
+核对日期：2026-11-16（Asia/Shanghai），本轮新增 `/api/v1/health/storage` 并改“本机开发存储”一节中 PostgreSQL 的接入状态（P2）；此前同日新增“本机开发存储”一节；其余各节为 2026-11-15 在 Git HEAD `ed9c1cf` 上的核对结果。本清单只核对实现和配置位置，未调用供应商，不代表接口当前联网可用。
 
 ## 外部服务
 
@@ -43,6 +43,7 @@ Base URL 是服务的基础地址，Endpoint 是最终请求的具体地址。�
 | 方法 | 默认完整地址 | 用途 / 是否请求外部服务 | 源码 |
 | --- | --- | --- | --- |
 | `GET` | `http://127.0.0.1:8000/api/v1/health` | 检查后端能否响应；不检查供应商连通 | [health.py](../../backend/app/api/routes/health.py) |
+| `GET` | `http://127.0.0.1:8000/api/v1/health/storage` | 存储就绪检查：PostgreSQL 执行 `SELECT 1` 并读迁移版本；断库时仍 200，`status` 为 `degraded`；连接串去掉密码；Milvus、嵌入暂标 `not_implemented`（P4、P5）；前端暂未调用 | 同上、[session.py](../../backend/app/db/session.py) 的 `check_database` |
 | `GET` | `http://127.0.0.1:8000/api/v1/model` | 检查模型配置是否齐全；不调用模型 | [chat.py](../../backend/app/api/routes/chat.py) |
 | `POST` | `http://127.0.0.1:8000/api/v1/chat` | 等完整回答后返回；调用模型，可能计费 | 同上 |
 | `POST` | `http://127.0.0.1:8000/api/v1/chat/stream` | 逐段返回回答；调用模型，可能计费 | 同上 |
@@ -57,11 +58,11 @@ Base URL 是服务的基础地址，Endpoint 是最终请求的具体地址。�
 
 ## 本机开发存储（Docker）
 
-P1（2026-11-16）起，[deploy/compose.dev.yml](../../deploy/compose.dev.yml) 在本机起数据库和向量库，用法见 [deploy/README.md](../../deploy/README.md)。**后端目前还不连接它们**（P2、P4 才接入），表里只是容器发布的地址。端口只绑 `127.0.0.1`；括号里是端口冲突时可改的变量，写在 `backend/.env`。
+P1（2026-11-16）起，[deploy/compose.dev.yml](../../deploy/compose.dev.yml) 在本机起数据库和向量库，用法见 [deploy/README.md](../../deploy/README.md)。P2（2026-11-16）起后端连接 PostgreSQL（`DOGHUNT_DB_HOST`、`DOGHUNT_DB_PORT`、`DOGHUNT_DB_USER`、`DOGHUNT_DB_PASSWORD`、`DOGHUNT_DB_NAME` 拼成 `postgresql+psycopg://` 连接串，`DOGHUNT_DATABASE_URL` 可整体覆盖，测试用它指向临时 SQLite）；Milvus 还不连接（P4）。端口只绑 `127.0.0.1`；括号里是端口冲突时可改的变量，写在 `backend/.env`。
 
 | 服务 | 默认地址 | 用途 | 谁在用 |
 | --- | --- | --- | --- |
-| PostgreSQL | `127.0.0.1:5432`（`DOGHUNT_DB_PORT`），库名与用户 `doghunt`，密码 `DOGHUNT_DB_PASSWORD` | 关系库，计划存记忆正文、状态和以后的预测记录 | [check_storage.py](../../scripts/check_storage.py)；后端 P2 接入 |
+| PostgreSQL | `127.0.0.1:5432`（`DOGHUNT_DB_PORT`），库名与用户 `doghunt`，密码 `DOGHUNT_DB_PASSWORD` | 关系库，计划存记忆正文、状态和以后的预测记录；P2 只有空的基线迁移 `0001` | [check_storage.py](../../scripts/check_storage.py)；后端 [session.py](../../backend/app/db/session.py)、`/health/storage`、Alembic（[env.py](../../backend/migrations/env.py)） |
 | Milvus gRPC | `127.0.0.1:19530`（`DOGHUNT_MILVUS_PORT`） | 向量库，计划存记忆向量；本机无认证 | 同上；后端 P4 接入，计划读 `DOGHUNT_MILVUS_URI`（默认 `http://127.0.0.1:19530`） |
 | Milvus 健康检查 | `GET http://127.0.0.1:9091/healthz`（`DOGHUNT_MILVUS_HEALTH_PORT`） | 返回 `OK` 表示服务就绪 | 编排健康检查、`make storage-check` |
 
@@ -92,6 +93,7 @@ Skill 是 AI 执行任务时遵循的维护流程，不是后台监听器。手�
 
 | 日期 | 变化 | 依据与验证边界 |
 | --- | --- | --- |
+| 2026-11-16 | P2：新增 `GET /api/v1/health/storage`；后端开始连接 PostgreSQL，连接变量 `DOGHUNT_DB_*` / `DOGHUNT_DATABASE_URL` | 对照 `router.py`、`routes/health.py`、`config.py`、`db/session.py`；本机 8010 端口实测：库在时 `status=ok`、`revision=0001`，停 Postgres 后 HTTP 200 + `degraded`，两次响应和日志都不含密码；前端未调用 |
 | 2026-11-16 | 新增本机开发存储：PostgreSQL 5432、Milvus 19530 与 9091 健康检查 | P1 实际起容器核对：`make storage-check` 通过，三个端口只绑 127.0.0.1；后端尚未接入；没有改动外部服务和后端路由 |
 | 2026-11-15 | 新增调用日志两个只读接口与 `X-Trace-Id` 响应头 | 本机后端实测返回响应头，两个接口浏览器读取正常；没有新增或改动外部服务地址 |
 | 2026-11-15 | 本机文件补齐全部外部与内部 API 地址，Skill 要求两份清单同步 | 按用户补充要求合并查看入口，模型原有配置记录保留；未调用接口 |

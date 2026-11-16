@@ -7,11 +7,11 @@
 
 | 项目 | 当前记录 |
 | --- | --- |
-| 最近核对 | 2026-11-15（Asia/Shanghai） |
-| 核对范围 | 2026-11-16 数据库接入 P1：新建 storage 子块（`deploy/`、`scripts/check_storage.py`、`make storage-*`），backend 子块只改了相关几行；其他模块未重新核对。上一次：2026-11-15 main 合并审查：核对 `73d2400..50f5355` 差异，重点为聊天分析卡、数据源、流式断连、日志权限与前端调用方；修复所选平台缺玩法时跨平台补线的问题，更新 chat 子块。此前阶段 4.4 的代码地图拆分和其他模块历史核对见各子块；未重新全量核对 |
+| 最近核对 | 2026-11-16（Asia/Shanghai） |
+| 核对范围 | 2026-11-16 数据库接入 P2：后端 `db/`、`config.py` 数据库字段、`main.py` 启动检查、`/health/storage`、`migrations/`、`Makefile` 的 `db-*`、测试隔离；更新 storage、backend 子块，其他模块未重新核对。之前同日 P1：新建 storage 子块（`deploy/`、`scripts/check_storage.py`、`make storage-*`），backend 子块只改了相关几行；其他模块未重新核对。上一次：2026-11-15 main 合并审查：核对 `73d2400..50f5355` 差异，重点为聊天分析卡、数据源、流式断连、日志权限与前端调用方；修复所选平台缺玩法时跨平台补线的问题，更新 chat 子块。此前阶段 4.4 的代码地图拆分和其他模块历史核对见各子块；未重新全量核对 |
 | 最近全量核对 | 2026-11-11；覆盖当时已登记模块的代码与关键配置，不含依赖、生成产物和密钥文件 |
-| Git 基准 | 2026-11-16 P1 以 `dev` 的 `f528ea5` 加未提交改动为基准；此前 main 合并审查以 `50f5355` 为起点，确切合并与远程状态见最新交接 |
-| 运行验证 | 2026-11-16 P1：本机 Docker 实际起停四个存储容器，`make storage-check` 通过，后端 177 项离线测试通过；没有改后端代码。2026-11-15 main 合并审查：后端 177 项离线测试与 `prompt check` 通过，前端 `npm run build`（含类型检查，295 modules）通过，本轮没有调用真实模型或刷新外部数据。此前同日真实模型核心回归与浏览器分析卡验证为历史结果，见 chat、frontend 子块 |
+| Git 基准 | 2026-11-16 P2 以 `dev` 的 `90b131c` 加未提交改动为基准；P1 以 `f528ea5` 加当时未提交改动为基准；此前 main 合并审查以 `50f5355` 为起点，确切合并与远程状态见最新交接 |
+| 运行验证 | 2026-11-16 P2：208 项离线测试通过（4 项集成默认跳过），`make storage-up` 起的真实 Postgres 上集成测试 4 项通过，日常库迁移往返、8010 端口停库启动实测；未调用真实模型或外部数据。P1：本机 Docker 实际起停四个存储容器，`make storage-check` 通过，后端 177 项离线测试通过；没有改后端代码。2026-11-15 main 合并审查：后端 177 项离线测试与 `prompt check` 通过，前端 `npm run build`（含类型检查，295 modules）通过，本轮没有调用真实模型或刷新外部数据。此前同日真实模型核心回归与浏览器分析卡验证为历史结果，见 chat、frontend 子块 |
 
 ## 父块：模块与完成情况
 
@@ -19,8 +19,8 @@
 | --- | --- | --- | --- |
 | 前端网站 | 用户看到的页面和操作入口（3D 启动页与比赛另见下一行） | 部分实现：真实模型聊天（逐段显示、先显示服务端分析卡）、比赛与盘口、运行状态与本机偏好可用；内页统一为安静的深色全息沙盘风格；预测记录、效果统计、长期记忆只有界面和明确标注的演示数据，正式保存、赛果与真实统计未实现 | [前端子块](docs/codebase/frontend.md) |
 | 3D 启动页与沙盘比赛 | `/welcome` 3D 指挥室和 3v3 街机篮球 | 部分实现：启动页与进入流程可用，比赛可打完一场（第三轮：身体对抗、协防掏球、完美出手必进）；不支持触屏，未经真人试玩 | [启动页与比赛子块](docs/codebase/frontend-game.md) |
-| 后端服务 | 应用骨架、配置、健康检查、模型连接 | 部分实现：health、模型状态、`llm.py` 中转连接（思考强度可配置，代码默认 `high`，本机 `.env` 记为 `medium`，未重新核对）；数据库、记忆、正式预测保存、通用任务框架只有预留目录 | [后端子块](docs/codebase/backend.md) |
-| 本机开发存储 | Docker 起 PostgreSQL + Milvus（含 etcd、MinIO），起停与检查 | 部分实现：`deploy/compose.dev.yml`（项目名 `doghunt-dev`，端口只绑本机）、`make storage-*`、`scripts/check_storage.py` 已实现并在本机验证；后端还不连接，迁移、表和 Milvus 集合未实现（开发文档 P2–P4） | [本机开发存储子块](docs/codebase/storage.md) |
+| 后端服务 | 应用骨架、配置、健康检查、模型连接 | 部分实现：health、`/health/storage`、模型状态、`llm.py` 中转连接（思考强度可配置，代码默认 `high`，本机 `.env` 记为 `medium`，未重新核对）；数据库连接与迁移框架已接上但还没有表；记忆、正式预测保存、通用任务框架只有预留目录 | [后端子块](docs/codebase/backend.md) |
+| 本机开发存储 | Docker 起 PostgreSQL + Milvus（含 etcd、MinIO），起停与检查 | 部分实现：`deploy/compose.dev.yml`（项目名 `doghunt-dev`，端口只绑本机）、`make storage-*`、`scripts/check_storage.py`（P1）；后端连 PostgreSQL、Alembic 空基线 `0001`、`make db-migrate`、`/health/storage`（P2），均在本机验证；记忆表、Milvus 集合未实现（P3、P4） [本机开发存储子块](docs/codebase/storage.md) |
 | 聊天与提示词 | 聊天接口、拼资料、分析卡、提示词版本 | 已实现：`/chat` 与 `/chat/stream`，同一时间只处理一个请求（忙时 429）；服务端先用 `match_analysis` 算分析卡，流式顺序 analysis → delta → done/error；提示词 role_v1、sources_v5、odds_v8、method_v8、output_v6（8491 字）；已知缺口：交给模型的原始分节还没精简，输入 tokens 比分析卡之前多 | [聊天子块](docs/codebase/chat.md) |
 | 外部数据与后台取数 | 盘口接口、更新后台取数、赛程比分与伤病效率 | 已实现：`/odds` 读快照与手动更新，更新后 `start_extras` 在后台取 BALLDONTLIE 赛程比分与整季比分、DunkAPI 伤病与球队效率，只用免费档；市场信号 | [外部数据子块](docs/codebase/data-sources.md) |
 | 功能块框架 | 功能块提示词的读取、检查与纠正 | 部分实现：四层检查和纠正一次可用，只有草稿实力块 strength_v2；`run_block` 没有调用方，结果不保存，从未用真实模型跑过 | [功能块子块](docs/codebase/blocks.md) |
@@ -52,8 +52,8 @@
 ## 重要缺口与未决事项
 
 - [前端](docs/codebase/frontend.md)：正式预测/复盘保存、赛果、真实统计、多人隔离和汇总分析待实现；旧版复盘填写/归档入口已退出当前路由。设置只持久保存本机显示偏好，不修改后台配置。用户已确认保留自动演示，并要求三页界面、数据与交互一起切换到深色方案。2026-11-14 的样式取向是本地按使用者要求定的，未经项目负责人或美术评审。手机实机及低性能设备未验证。
-- [后端](docs/codebase/backend.md)：其他联网工具、正式记录、数据库和任务恢复未实现。
-- [本机开发存储](docs/codebase/storage.md)：容器可用但后端未接入；Milvus v2.5.27；MinIO 镜像不是官方 2.5 编排原配（原 tag 已拉不到）；Milvus 重启后约 1 分钟内 DDL 可能报 `node not match`，需重试。
+- [后端](docs/codebase/backend.md)：其他联网工具、正式记录、记忆表和任务恢复未实现；数据库已连接但没有表。
+- [本机开发存储](docs/codebase/storage.md)：后端只接了 PostgreSQL（无表），Milvus 未接入，`/health/storage` 的 Milvus、嵌入固定为 `not_implemented`；Milvus v2.5.27；MinIO 镜像不是官方 2.5 编排原配（原 tag 已拉不到）；Milvus 重启后约 1 分钟内 DDL 可能报 `node not match`，需重试。
 - [聊天](docs/codebase/chat.md)：只读快照；被分析卡覆盖的原始分节仍交给模型，输入 tokens 没下降；回归用例 E-011 没跑过。
 - [功能块](docs/codebase/blocks.md)：提示词内容是草稿，角色与分析方法待定义；指标程序、批量运行和结果记录未实现，未做真实模型调用。
 - [调用日志](docs/codebase/logs.md)：多个后端进程同时写同一天的日志没有加锁；`/logs` 页顶部位置栏显示“未知位置”（`StatusStrip` 只认启动页模块列表）。
@@ -71,6 +71,7 @@
 
 | 日期 | 范围 | 主要变化 |
 | --- | --- | --- |
+| 2026-11-16 | 数据库接入 P2 关系库与迁移 | storage、backend 子块和本块：新增 `db/`（懒加载 engine、`session_scope`、`UTCDateTime`）、`/health/storage`、Alembic 空基线与 `make db-migrate`，测试隔离扩展；208 项离线测试、4 项真实 Postgres 集成测试通过 |
 | 2026-11-16 | 数据库接入 P1 本地基础设施 | 新建 storage 子块，backend 子块改链接、Makefile、`.env.example` 与缺口几行，本块加一行模块与缺口；开发编排、检查脚本、`make storage-*` 本机实测通过，177 项离线测试通过；后端代码未改 |
 | 2026-11-15 | 推送前审查修正 | 只更新 chat、logs 子块和本块：网页在发送中断开时由 `ClosingStreamingResponse` 在请求内关闭事件流和模型流，存档不再丢失、模型锁立即释放；调用编号改用 fullmatch；进行中的聊天按步骤归为 chat；详情找到编号后不再读满 14 天；`backend_log.txt` 加进 `.gitignore`。175 项离线测试通过 |
 | 2026-11-15 | 聊天分析卡与代码地图拆分 | 阶段 3 新增 `match_analysis` 分析卡、SSE `analysis` 事件、存档 `analysis_cards`、前端 `AnalysisCards.vue`，提示词 odds_v8/method_v8/output_v6；阶段 4.4 拆出 chat、data-sources、blocks、logs、frontend-game 五个子块，本块核对范围只留最近一次；`docs/` 根目录分类后更新了本块的文档链接 |
