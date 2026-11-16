@@ -18,7 +18,7 @@
 
 | 源码或配置 | 入口或关键符号 | 用途 |
 | --- | --- | --- |
-| [compose.dev.yml](../../deploy/compose.dev.yml) | 顶层 `name: doghunt-dev`；服务 `postgres`、`etcd`、`minio`、`milvus`；卷 `pg_data`、`etcd_data`、`minio_data`、`milvus_data` | 镜像 `postgres:17-alpine`、`quay.io/coreos/etcd:v3.5.16`、`milvusdb/minio:RELEASE.2024-12-18T13-15-44Z`、`milvusdb/milvus:v2.5.4`；Postgres 与 Milvus 端口只绑 `127.0.0.1`，etcd、MinIO 不发布；四个服务都有健康检查，Milvus 等 etcd、MinIO healthy 才启动 |
+| [compose.dev.yml](../../deploy/compose.dev.yml) | 顶层 `name: doghunt-dev`；服务 `postgres`、`etcd`、`minio`、`milvus`；卷 `pg_data`、`etcd_data`、`minio_data`、`milvus_data` | 镜像 `postgres:17-alpine`、`quay.io/coreos/etcd:v3.5.18`、`milvusdb/minio:RELEASE.2024-12-18T13-15-44Z`、`milvusdb/milvus:v2.5.27`；Postgres 与 Milvus 端口只绑 `127.0.0.1`，etcd、MinIO 不发布；四个服务都有健康检查，Milvus 等 etcd、MinIO healthy 才启动 |
 | [deploy/README.md](../../deploy/README.md) | — | 起停、日志、检查、端口冲突、备份、恢复、重置（带警告）、排错 |
 | [check_storage.py](../../scripts/check_storage.py) | `main`、`check_containers`、`check_postgres`、`check_milvus`、`Checker.redact` | 只用标准库。检查容器 running/healthy 和项目名、端口只绑本机、容器内 `pg_isready`、用 `.env` 密码经 TCP 登录 `SELECT 1`、宿主机端口可连、Milvus `/healthz`；退出码 0 通过、1 有失败、2 配置或 Docker 不可用；打印前把密码替换成 `***` |
 | [Makefile](../../Makefile) | `STORAGE_COMPOSE`、`storage-up`、`storage-down`、`storage-ps`、`storage-logs`、`storage-check` | `docker compose --env-file backend/.env -f deploy/compose.dev.yml …`；`storage-check` 用 `cd backend && uv run --locked python ../scripts/check_storage.py` |
@@ -50,16 +50,17 @@
 | 2026-11-16 | 停 Postgres、停 Milvus、错误密码各跑一次检查 | 分别报容器没运行 / 连接被拒 / `password authentication failed`，退出码 1；输出不含密码 |
 | 2026-11-16 | 按 README 原文执行备份、删行、恢复；改用 55432/29530/29091 端口再改回 | 恢复后测试行回来；改端口后检查通过 |
 | 2026-11-16 | `docker stats --no-stream` | 空载约 390 MiB（刚启动），写入并重启后约 560 MiB |
+| 2026-11-16 | Milvus 升到 v2.5.27、etcd 升到 v3.5.18，原卷上 `up -d` 原地升级 | 40 秒到 healthy，`make storage-check` 通过；建集合、写入、搜索命中，重启后数据在，测试集合已删除；空载约 450 MiB |
 | 2026-11-16 | `git status`、在已跟踪和未跟踪文件中检索密码 | `backend/.env` 被忽略，检索不到密码 |
 | 2026-11-16 | `cd backend && uv run --locked python -m unittest discover -s tests` | `Ran 177 tests / OK`；离线测试不依赖这些容器 |
 
 ## 限制、未决事项与下一步
 
 - Milvus 重启后约 1 分钟内，建表、删集合可能报 `node not match`（etcd 里旧节点登记未过期），重试即可；P4 初始化命令要做有限重试。
-- MinIO 镜像不是 Milvus v2.5.4 标签原配，而是同一官方仓库较新编排的组合；P1 只验证了 Milvus 能在其中建桶、写段文件，P4 集成测试再确认。
-- Milvus 2.5 分支已到 v2.5.27，本轮按方案用 v2.5.4，是否升级留到 P4 前决定。
+- MinIO 镜像不是 Milvus 2.5 官方编排原配（原配的 `minio/minio` 拉不到），而是同一官方仓库较新编排里的镜像；已验证 v2.5.27 能在其中建集合、写入、搜索，P4 集成测试再确认。
+- Milvus 已定为 v2.5.27（含 CVE-2026-26190 修复），P4 的 `pymilvus` 用 2.5.18。
 - 下一步是 P2：后端加 SQLAlchemy、psycopg、Alembic，配置里接 `DOGHUNT_DB_*`，加 `/health/storage`。
 
 ## 历史
 
-- 2026-11-16：新建本子块；P1 完成开发编排、使用说明、检查脚本与 Makefile 目标。
+- 2026-11-16：新建本子块；P1 完成开发编排、使用说明、检查脚本与 Makefile 目标（提交 `9e6f7af`）。同日 Milvus 从 v2.5.4 升到 v2.5.27，etcd 从 v3.5.16 升到 v3.5.18。

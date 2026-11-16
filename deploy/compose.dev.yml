@@ -9,10 +9,10 @@
 # 其他仓库里同样叫 deploy/ 的目录也会撞名。交付编排用 name: doghunt。
 #
 # 镜像核对（2026-11-16，本机 arm64 拉取通过）：
-# - etcd 与 Milvus 来自 Milvus v2.5.4 官方 standalone 编排；Milvus 用 v2.5.4，pymilvus 跟 2.5.x。
-# - MinIO：官方 v2.5.4 编排里的 minio/minio:RELEASE.2023-03-20T20-16-18Z 已无法拉取（Docker Hub 与
-#   quay.io 的 minio/minio 仓库都拒绝访问），改用 Milvus v2.6.27 官方编排里的 milvusdb/minio 镜像；
-#   该镜像带 curl，健康检查沿用官方写法。
+# - etcd 与 Milvus 按 Milvus v2.5.27 官方 standalone 编排：etcd v3.5.18、Milvus v2.5.27（含 9091 端口
+#   认证绕过漏洞 CVE-2026-26190 的修复）；官方发布说明对应 Python SDK pymilvus 2.5.18。
+# - MinIO：官方 2.5 编排里的 minio/minio 镜像已无法拉取（Docker Hub 与 quay.io 的 minio/minio 仓库都
+#   拒绝访问），改用 Milvus v2.6.27 官方编排里的 milvusdb/minio 镜像；该镜像带 curl，健康检查沿用官方写法。
 # 端口只绑 127.0.0.1；MinIO 和 etcd 不发布到宿主机。
 
 name: doghunt-dev
@@ -35,7 +35,7 @@ services:
       retries: 5
 
   etcd:
-    image: quay.io/coreos/etcd:v3.5.16
+    image: quay.io/coreos/etcd:v3.5.18
     environment:
       - ETCD_AUTO_COMPACTION_MODE=revision
       - ETCD_AUTO_COMPACTION_RETENTION=1000
@@ -43,7 +43,7 @@ services:
       - ETCD_SNAPSHOT_COUNT=50000
     volumes:
       - etcd_data:/etcd
-    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    command: etcd -advertise-client-urls=http://etcd:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
     healthcheck:
       test: ["CMD", "etcdctl", "endpoint", "health"]
       interval: 30s
@@ -66,7 +66,7 @@ services:
       retries: 3
 
   milvus:
-    image: milvusdb/milvus:v2.5.4
+    image: milvusdb/milvus:v2.5.27
     command: ["milvus", "run", "standalone"]
     security_opt:
       - seccomp:unconfined

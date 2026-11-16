@@ -9,7 +9,7 @@
 | 项目 | 值 |
 | --- | --- |
 | Compose 项目名 | `doghunt-dev`（文件顶层 `name`；卷名前缀 `doghunt-dev_`） |
-| 镜像 | `postgres:17-alpine`、`quay.io/coreos/etcd:v3.5.16`、`milvusdb/minio:RELEASE.2024-12-18T13-15-44Z`、`milvusdb/milvus:v2.5.4`（选择理由写在编排文件开头） |
+| 镜像 | `postgres:17-alpine`、`quay.io/coreos/etcd:v3.5.18`、`milvusdb/minio:RELEASE.2024-12-18T13-15-44Z`、`milvusdb/milvus:v2.5.27`（选择理由写在编排文件开头；后端 SDK 用 `pymilvus` 2.5.18） |
 | 宿主机端口 | Postgres `127.0.0.1:5432`，Milvus gRPC `127.0.0.1:19530`，Milvus 健康检查 `127.0.0.1:9091`；etcd、MinIO 不发布 |
 | 数据卷 | `doghunt-dev_pg_data`、`doghunt-dev_etcd_data`、`doghunt-dev_minio_data`、`doghunt-dev_milvus_data` |
 | 密码 | `DOGHUNT_DB_PASSWORD`，只写在被 Git 忽略的 `backend/.env` |

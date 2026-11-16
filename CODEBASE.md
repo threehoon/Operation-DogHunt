@@ -53,7 +53,7 @@
 
 - [前端](docs/codebase/frontend.md)：正式预测/复盘保存、赛果、真实统计、多人隔离和汇总分析待实现；旧版复盘填写/归档入口已退出当前路由。设置只持久保存本机显示偏好，不修改后台配置。用户已确认保留自动演示，并要求三页界面、数据与交互一起切换到深色方案。2026-11-14 的样式取向是本地按使用者要求定的，未经项目负责人或美术评审。手机实机及低性能设备未验证。
 - [后端](docs/codebase/backend.md)：其他联网工具、正式记录、数据库和任务恢复未实现。
-- [本机开发存储](docs/codebase/storage.md)：容器可用但后端未接入；MinIO 镜像不是 Milvus v2.5.4 原配（原 tag 已拉不到）；Milvus 重启后约 1 分钟内 DDL 可能报 `node not match`，需重试。
+- [本机开发存储](docs/codebase/storage.md)：容器可用但后端未接入；Milvus v2.5.27；MinIO 镜像不是官方 2.5 编排原配（原 tag 已拉不到）；Milvus 重启后约 1 分钟内 DDL 可能报 `node not match`，需重试。
 - [聊天](docs/codebase/chat.md)：只读快照；被分析卡覆盖的原始分节仍交给模型，输入 tokens 没下降；回归用例 E-011 没跑过。
 - [功能块](docs/codebase/blocks.md)：提示词内容是草稿，角色与分析方法待定义；指标程序、批量运行和结果记录未实现，未做真实模型调用。
 - [调用日志](docs/codebase/logs.md)：多个后端进程同时写同一天的日志没有加锁；`/logs` 页顶部位置栏显示“未知位置”（`StatusStrip` 只认启动页模块列表）。
