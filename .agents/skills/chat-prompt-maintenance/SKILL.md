@@ -9,6 +9,12 @@ description: 维护首页聊天助手的提示词文件（backend/app/prompts/ch
 
 Skill 只在被调用时运行，不监听文件。漏记录的修改会让 `test_chat.py` 的 `test_repository_prompts_are_recorded` 失败，那时再调用即可。
 
+## 在 UMA 中使用
+
+自然语言“记录提示词改版 / 登记提示词问题”也可触发；先用 `skill` 按 `chat-prompt-maintenance` 加载。使用项目 `AGENTS.md` 的工具和权限约定；命令通过 `bash` 将 `workdir` 设为项目的 `backend/`，不依赖前一次 Shell 的当前目录。只调整本 Skill 的文字不触发产品聊天提示词升版。
+
+使用已存在的项目 Python 环境；下面以 `.venv/bin/python` 为例。解释器不存在时先确认可用环境，不擅自安装依赖。UMA 的原生验证工具可用时，先发现实际命令并将只读的 `check` 和离线测试纳入验收；`lock` 会改文件，作为实现步骤执行，不注册成验证检查。缺少检查命令时说明缺口，不将手写记录当作通过。
+
 ## 文件
 
 都在 `backend/app/prompts/chat/`：
@@ -22,8 +28,9 @@ Skill 只在被调用时运行，不监听文件。漏记录的修改会让 `tes
 
 ```sh
 .venv/bin/python -m app.services.chat.prompt check
-.venv/bin/python -m app.services.chat.prompt lock --active chat_role_v1 chat_sources_v1 chat_odds_v1 chat_method_v2 chat_output_v1
 ```
+
+切换版本前读取 `versions.lock.json` 的 `active`，按 role、sources、odds、method、output 的顺序保留未改模块，仅将本次改动模块替换为已确认的新版本名，再运行 `.venv/bin/python -m app.services.chat.prompt lock --active` 并传入这五个实际名称。不复制固定的旧版本示例，以免把其他模块回退。
 
 `lock` 会登记新文件、切换 `active`、重算哈希；已登记版本的内容变了，它会拒绝执行。
 
@@ -35,7 +42,7 @@ Skill 只在被调用时运行，不监听文件。漏记录的修改会让 `tes
    - 新版本文件的第一行改成新版本号。
    - 用户已自己新建了新版本文件：只核对文件名和第一行。
    - 只改错别字、标点也升版本，记录里标“文字修正”。
-3. **问原因**：只问一个问题：这次改动对应 `issues.md` 的哪一条，或用一句话说明原因。用户不答就写“原因待补”，结束时提醒。
+3. **记录原因**：用户请求或已确认的问题已说明原因时直接沿用，不重复询问。仍缺少原因时只问一个问题：这次改动对应 `issues.md` 的哪一条，或用一句话说明原因。UMA 中使用可用的询问工具；用户不答就写“原因待补”，结束时提醒。跳过原因问题不代表同意移动或恢复文件。
 4. **更新锁文件**：用 `lock --active ...` 把 `active` 指向新版本。旧版本文件一律保留。
 5. **写记录**：
    - `CHANGELOG.md` 最上方追加一条：日期、一句话说明、原因、静态提示词总字数（旧 → 新，取锁文件的 `static_chars`），每个新版本一个 `### 版本号（替换 旧版本号）` 小节，写改动摘要和字数。摘要按 diff 如实写，不夸大。
@@ -43,9 +50,9 @@ Skill 只在被调用时运行，不监听文件。漏记录的修改会让 `tes
    - 这次是修复某个问题时，把触发问题的提问按格式加进 `eval_cases.md`，来源写问题编号。
    - `README.md` 的版本表改成新的 `active`。
 6. **检查内容**：通读当前五个版本，找出新规则和其他模块矛盾的地方，以及重复或已过时的规则；字数比上一版明显增加时指出可合并的规则。只报告，不替用户改提示词内容。
-7. **跑离线测试**：`cd backend && .venv/bin/python -m unittest discover -s tests -v`，结果原样报告；`check` 必须通过。
+7. **跑离线测试**：在 `backend/` 工作目录运行 `.venv/bin/python -m unittest discover -s tests -v`，结果原样报告；`check` 必须通过。UMA 中通过已发现的对应 `coding_check` 检查留存证据；工具或环境不可用时明确报告未运行及原因，不假报通过。
 8. **列出回归用例**：从 `eval_cases.md` 选出核心用例和与改动模块相关的用例。真实模型调用会产生费用，只列出，不执行，除非用户明确要求。
-9. **同步代码地图**：调用 `$codebase-map`，只更新 `docs/codebase/backend.md` 中聊天提示词相关的内容和父块摘要。
+9. **同步代码地图**：加载 `codebase-map`（已加载则沿用），先读 `CODEBASE.md` 确认当前聊天模块子块，再更新提示词相关内容和父块摘要，不硬编码已拆分前的后端子块路径；接口、数据源等其他模块仅在确实受影响时同步。
 
 最后报告：改了哪些模块、新版本号、写了哪些记录、测试结果、还没做的事（原因待补、回归未跑）。
 
